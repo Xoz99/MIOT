@@ -1,12 +1,19 @@
 # MIOT
 
-# akses
-git clone https://github.com/Xoz99/MIOT.git
+**MIOT** X PayEasy b.  
 
-# install depedensi taylwind \
+## Installation
+
+Clone repo ini:
+
+```bash
+git clone git@github.com:Xoz99/MIOT.git
+cd frontend
+```
+## Install dependencies (Tailwind + PostCSS):
 npm install -D @tailwindcss/postcss
 
-## Run 
-cd fe
-npm start
+## run
+npm start 
+
 
