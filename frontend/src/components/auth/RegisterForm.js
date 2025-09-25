@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Sparkles } from 'lucide-react';
 
-const RegisterForm = ({ onRegister, onSwitchToLogin }) => {
+const RegisterForm = ({ onRegister, onSwitchToLogin, loading, error }) => {
   const [formData, setFormData] = useState({
     storeName: '',
     ownerName: '',
@@ -33,57 +33,78 @@ const RegisterForm = ({ onRegister, onSwitchToLogin }) => {
           <p className="text-emerald-700 mt-2 font-medium">Bergabung dengan platform kami</p>
         </div>
 
+        {/* Error Message */}
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-2xl mb-6">
+            <p className="text-sm font-medium">{error}</p>
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-4">
           <input
             type="text"
             placeholder="Nama Toko"
             value={formData.storeName}
             onChange={(e) => handleChange('storeName', e.target.value)}
-            className="w-full px-4 py-3 bg-emerald-50/50 border border-emerald-200 rounded-2xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all duration-200 placeholder-emerald-600"
+            className="w-full px-4 py-3 bg-emerald-50/50 border border-emerald-200 rounded-2xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all duration-200 placeholder-emerald-600 disabled:opacity-50"
             required
+            disabled={loading}
           />
           <input
             type="text"
             placeholder="Nama Pemilik"
             value={formData.ownerName}
             onChange={(e) => handleChange('ownerName', e.target.value)}
-            className="w-full px-4 py-3 bg-emerald-50/50 border border-emerald-200 rounded-2xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all duration-200 placeholder-emerald-600"
+            className="w-full px-4 py-3 bg-emerald-50/50 border border-emerald-200 rounded-2xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all duration-200 placeholder-emerald-600 disabled:opacity-50"
             required
+            disabled={loading}
           />
           <input
             type="email"
             placeholder="Email"
             value={formData.email}
             onChange={(e) => handleChange('email', e.target.value)}
-            className="w-full px-4 py-3 bg-emerald-50/50 border border-emerald-200 rounded-2xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all duration-200 placeholder-emerald-600"
+            className="w-full px-4 py-3 bg-emerald-50/50 border border-emerald-200 rounded-2xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all duration-200 placeholder-emerald-600 disabled:opacity-50"
             required
+            disabled={loading}
           />
           <input
             type="tel"
             placeholder="Nomor Telepon"
             value={formData.phone}
             onChange={(e) => handleChange('phone', e.target.value)}
-            className="w-full px-4 py-3 bg-emerald-50/50 border border-emerald-200 rounded-2xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all duration-200 placeholder-emerald-600"
+            className="w-full px-4 py-3 bg-emerald-50/50 border border-emerald-200 rounded-2xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all duration-200 placeholder-emerald-600 disabled:opacity-50"
+            disabled={loading}
           />
           <input
             type="password"
             placeholder="Password"
             value={formData.password}
             onChange={(e) => handleChange('password', e.target.value)}
-            className="w-full px-4 py-3 bg-emerald-50/50 border border-emerald-200 rounded-2xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all duration-200 placeholder-emerald-600"
+            className="w-full px-4 py-3 bg-emerald-50/50 border border-emerald-200 rounded-2xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all duration-200 placeholder-emerald-600 disabled:opacity-50"
             required
+            disabled={loading}
           />
           <textarea
             placeholder="Alamat Toko (Opsional)"
             value={formData.address}
             onChange={(e) => handleChange('address', e.target.value)}
-            className="w-full px-4 py-3 bg-emerald-50/50 border border-emerald-200 rounded-2xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 h-20 resize-none transition-all duration-200 placeholder-emerald-600"
+            className="w-full px-4 py-3 bg-emerald-50/50 border border-emerald-200 rounded-2xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 h-20 resize-none transition-all duration-200 placeholder-emerald-600 disabled:opacity-50"
+            disabled={loading}
           />
           <button 
             type="submit"
-            className="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 text-white py-4 rounded-2xl hover:from-emerald-600 hover:to-emerald-700 font-semibold transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-[1.02]"
+            disabled={loading}
+            className="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 text-white py-4 rounded-2xl hover:from-emerald-600 hover:to-emerald-700 font-semibold transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
           >
-            Buat Akun Merchant
+            {loading ? (
+              <div className="flex items-center justify-center gap-2">
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                Memproses...
+              </div>
+            ) : (
+              'Buat Akun Merchant'
+            )}
           </button>
         </form>
 
@@ -91,7 +112,8 @@ const RegisterForm = ({ onRegister, onSwitchToLogin }) => {
           <span className="text-emerald-700">Sudah memiliki akun? </span>
           <button 
             onClick={onSwitchToLogin}
-            className="text-emerald-800 hover:text-emerald-900 font-semibold hover:underline transition-colors"
+            disabled={loading}
+            className="text-emerald-800 hover:text-emerald-900 font-semibold hover:underline transition-colors disabled:opacity-50"
           >
             Masuk di sini
           </button>

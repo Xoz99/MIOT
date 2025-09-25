@@ -11,7 +11,9 @@ const POSPage = ({
   removeFromCart, 
   updateQuantity, 
   rfidConnected, 
-  onPaymentComplete 
+  onPaymentComplete,
+  api,
+  loading 
 }) => {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -21,6 +23,7 @@ const POSPage = ({
           products={products}
           addToCart={addToCart}
           formatRupiah={formatRupiah}
+          loading={loading}
         />
       </div>
 
@@ -38,6 +41,7 @@ const POSPage = ({
           formatRupiah={formatRupiah}
           rfidConnected={rfidConnected}
           onPaymentComplete={onPaymentComplete}
+          api={api}
         />
       </div>
     </div>

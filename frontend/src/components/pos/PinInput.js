@@ -52,6 +52,7 @@ const PinInput = ({
       return;
     }
 
+    // Simulate PIN verification (in real app, this would be sent to backend)
     if (pinValue === '123456' || pinValue === '000000') {
       onConfirm(pinValue);
     } else {
@@ -142,11 +143,7 @@ const PinInput = ({
             )}
           </div>
 
-          {/* Demo PIN Info */}
-          <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 mb-6">
-            <p className="text-blue-800 text-sm">
-            </p>
-          </div>
+    
 
           {/* Action Buttons */}
           <div className="flex gap-3">
