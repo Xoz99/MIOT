@@ -1,7 +1,7 @@
 import React from 'react';
 import { Store, Wifi, WifiOff, LogOut } from 'lucide-react';
 
-const Header = ({ storeInfo, rfidConnected, setRfidConnected, onLogout }) => {
+const Header = ({ storeInfo, rfidConnected, onConnect, onDisconnect, onLogout }) => {
   return (
     <header className="bg-white/80 backdrop-blur-md shadow-lg border-b border-slate-200/50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -26,8 +26,16 @@ const Header = ({ storeInfo, rfidConnected, setRfidConnected, onLogout }) => {
               <span>{rfidConnected ? 'RFID Terhubung' : 'RFID Terputus'}</span>
             </div>
             
-            <button 
-              onClick={() => setRfidConnected(!rfidConnected)}
+           <button 
+              onClick={() => {
+                console.log("Tombol 'Hubungkan' di Header diklik. Memanggil props.onConnect...");
+                // Pastikan rfidConnected adalah false sebelum memanggil onConnect
+                if (!rfidConnected) {
+                  onConnect();
+                } else {
+                  onDisconnect();
+                }
+              }}
               className={`px-6 py-2 rounded-2xl text-sm font-semibold transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105 ${
                 rfidConnected 
                   ? 'bg-gradient-to-r from-slate-500 to-slate-600 text-white hover:from-slate-600 hover:to-slate-700'

@@ -1,15 +1,20 @@
+// Lokasi: backend/src/app.js
+
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 
+// --- BAGIAN IMPORT YANG SUDAH DIRAPIKAN ---
 const authRoutes = require('./routes/auth.routes');
 const merchantRoutes = require('./routes/merchant.routes');
 const productRoutes = require('./routes/product.routes');
 const transactionRoutes = require('./routes/transaction.routes');
 const rfidRoutes = require('./routes/rfid.routes');
+const cardRoutes = require('./routes/card.routes'); // <-- INI YANG PENTING
 const errorHandler = require('./middleware/errorHandler');
+// -----------------------------------------
 
 const app = express();
 
@@ -22,7 +27,7 @@ app.use(cors({
 
 // Rate limiting
 const limiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour
+  windowMs: 60 * 60 * 1000,
   max: process.env.MAX_REQUESTS_PER_HOUR || 1000,
   message: {
     success: false,
@@ -39,8 +44,7 @@ app.use(express.urlencoded({ extended: true }));
 app.get('/health', (req, res) => {
   res.json({
     success: true,
-    message: 'Server is running',
-    timestamp: new Date().toISOString()
+    message: 'Server is running'
   });
 });
 
@@ -50,6 +54,7 @@ app.use('/api/merchant', merchantRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/transactions', transactionRoutes);
 app.use('/api/rfid', rfidRoutes);
+app.use('/api/cards', cardRoutes); // <-- DAN INI YANG PENTING
 
 // 404 handler
 app.use('*', (req, res) => {

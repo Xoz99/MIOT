@@ -1,0 +1,48 @@
+2025-09-27 09:20:23,869 - ArduinoSlave - INFO - Connected to Arduino on COM4
+2025-09-27 09:20:23,978 - ArduinoSlave - ERROR - Failed to connect to database: connection to server at "localhost" (::1), port 5432 failed: FATAL:  password authentication failed for user "postgres"
+
+2025-09-27 09:20:23,979 - ArduinoSlave - ERROR - Failed to connect to database. Exiting.
+2025-09-27 09:21:00,553 - ArduinoSlave - INFO - Connected to Arduino on COM4
+2025-09-27 09:21:00,646 - ArduinoSlave - ERROR - Failed to connect to database: connection to server at "localhost" (::1), port 5432 failed: FATAL:  password authentication failed for user "postgres"
+
+2025-09-27 09:21:00,646 - ArduinoSlave - ERROR - Failed to connect to database. Exiting.
+2025-09-27 09:25:00,783 - ArduinoSlave - INFO - Connected to Arduino on COM4
+2025-09-27 09:25:00,878 - ArduinoSlave - ERROR - Failed to connect to database: connection to server at "localhost" (::1), port 5432 failed: FATAL:  password authentication failed for user "postgres"
+
+2025-09-27 09:25:00,878 - ArduinoSlave - ERROR - Failed to connect to database. Exiting.
+2025-09-27 12:00:19,933 - ArduinoSlave - ERROR - Failed to connect to Arduino: could not open port 'COM4': FileNotFoundError(2, 'The system cannot find the file specified.', None, 2)
+2025-09-27 12:00:19,934 - ArduinoSlave - ERROR - Failed to connect to Arduino. Exiting.
+2025-09-27 12:01:48,755 - ArduinoSlave - ERROR - Failed to connect to Arduino: could not open port 'COM4': FileNotFoundError(2, 'The system cannot find the file specified.', None, 2)
+2025-09-27 12:01:48,755 - ArduinoSlave - ERROR - Failed to connect to Arduino. Exiting.
+2025-09-27 12:02:37,633 - ArduinoSlave - INFO - Connected to Arduino on COM5
+2025-09-27 12:02:37,845 - ArduinoSlave - ERROR - Failed to connect to database: connection to server at "localhost" (::1), port 5432 failed: FATAL:  password authentication failed for user "postgres"
+
+2025-09-27 12:02:37,846 - ArduinoSlave - ERROR - Failed to connect to database. Exiting.
+2025-09-27 12:07:35,500 - ArduinoSlave - INFO - Connected to Arduino on COM5
+2025-09-27 12:07:35,610 - ArduinoSlave - INFO - Connected to PostgreSQL database
+2025-09-27 12:07:35,680 - ArduinoSlave - INFO - Database tables created or already exist
+2025-09-27 12:07:35,680 - ArduinoSlave - INFO - Waiting for Arduino ready signal...
+2025-09-27 12:07:37,091 - ArduinoSlave - INFO - Handshake successful
+2025-09-27 12:07:37,091 - ArduinoSlave - INFO - Starting main processing loop
+2025-09-27 12:13:10,935 - ArduinoSlave - INFO - Program terminated by user
+2025-09-27 12:13:10,937 - ArduinoSlave - INFO - Serial connection closed
+2025-09-27 12:13:10,938 - ArduinoSlave - INFO - Database connection closed
+2025-09-27 12:36:20,064 - ArduinoSlave - INFO - Connected to Arduino on COM5
+2025-09-27 12:36:20,170 - ArduinoSlave - INFO - Connected to PostgreSQL database
+2025-09-27 12:36:20,173 - ArduinoSlave - INFO - Database tables created or already exist
+2025-09-27 12:36:20,173 - ArduinoSlave - INFO - Waiting for Arduino ready signal...
+2025-09-27 12:36:21,685 - ArduinoSlave - INFO - Handshake successful
+2025-09-27 12:36:21,685 - ArduinoSlave - INFO - Starting main processing loop
+2025-09-27 20:44:42,464 - ArduinoSlave - ERROR - Failed to connect to Arduino: could not open port 'COM5': FileNotFoundError(2, 'The system cannot find the file specified.', None, 2)
+2025-09-27 20:44:42,465 - ArduinoSlave - ERROR - Failed to connect to Arduino. Exiting.
+2025-09-27 20:46:09,627 - ArduinoSlave - INFO - Connected to Arduino on COM4
+2025-09-27 20:46:09,848 - ArduinoSlave - INFO - Connected to PostgreSQL database
+2025-09-27 20:46:09,858 - ArduinoSlave - INFO - Database tables created or already exist
+2025-09-27 20:46:09,858 - ArduinoSlave - INFO - Waiting for Arduino ready signal...
+2025-09-27 20:46:11,167 - ArduinoSlave - INFO - Handshake successful
+2025-09-27 20:46:11,167 - ArduinoSlave - INFO - Starting main processing loop
+2025-09-27 20:49:25,393 - ArduinoSlave - ERROR - Unexpected error: ClearCommError failed (PermissionError(13, 'Access is denied.', None, 5))
+2025-09-27 20:49:25,395 - ArduinoSlave - INFO - Serial connection closed
+2025-09-27 20:49:25,396 - ArduinoSlave - INFO - Database connection closed
+2025-09-28 00:40:52,122 - ArduinoSlave - ERROR - Failed to connect to Arduino: could not open port 'COM4': PermissionError(13, 'Access is denied.', None, 5)
+2025-09-28 00:40:52,123 - ArduinoSlave - ERROR - Failed to connect to Arduino. Exiting.
