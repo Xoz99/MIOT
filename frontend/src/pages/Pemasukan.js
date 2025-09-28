@@ -8,7 +8,8 @@ import {
   ArrowDown,
   PieChart,
   BarChart3,
-  RefreshCw
+  RefreshCw,
+  Filter
 } from 'lucide-react';
 
 const formatRupiah = (amount) => {
@@ -39,12 +40,17 @@ const formatDateTime = (date) => {
 
 const Pemasukan = ({ storeInfo, api, user }) => {
   const [transactions, setTransactions] = useState([]);
+  const [filteredTransactions, setFilteredTransactions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [selectedPeriod, setSelectedPeriod] = useState('today');
   const [lastFetch, setLastFetch] = useState(null);
+  
+  // Filter states
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
 
-  // Fetch transactions from backend
+  // Fetch all transactions from backend
   const fetchTransactions = useCallback(async () => {
     if (!api || !user) return;
     
@@ -52,44 +58,17 @@ const Pemasukan = ({ storeInfo, api, user }) => {
     setError('');
     
     try {
-      console.log('📊 Fetching transactions for period:', selectedPeriod);
+      console.log('📊 Fetching all transactions...');
       
-      // Calculate date range based on selected period
-      const today = new Date();
-      const params = new URLSearchParams();
-      
-      switch (selectedPeriod) {
-        case 'today':
-          params.append('startDate', today.toISOString().split('T')[0]);
-          params.append('endDate', today.toISOString().split('T')[0]);
-          break;
-        case 'yesterday':
-          const yesterday = new Date(today);
-          yesterday.setDate(yesterday.getDate() - 1);
-          params.append('startDate', yesterday.toISOString().split('T')[0]);
-          params.append('endDate', yesterday.toISOString().split('T')[0]);
-          break;
-        case 'week':
-          const weekAgo = new Date(today);
-          weekAgo.setDate(weekAgo.getDate() - 7);
-          params.append('startDate', weekAgo.toISOString().split('T')[0]);
-          params.append('endDate', today.toISOString().split('T')[0]);
-          break;
-        case 'month':
-          const monthAgo = new Date(today);
-          monthAgo.setMonth(monthAgo.getMonth() - 1);
-          params.append('startDate', monthAgo.toISOString().split('T')[0]);
-          params.append('endDate', today.toISOString().split('T')[0]);
-          break;
-        // 'all' case - no date filter
-      }
-      
-      const response = await api.get(`/transactions?${params.toString()}`);
+      // Get all transactions without date filter
+      const response = await api.get('/transactions');
       
       if (response.data.success) {
-        setTransactions(response.data.data.transactions || []);
+        const allTransactions = response.data.data.transactions || [];
+        setTransactions(allTransactions);
+        setFilteredTransactions(allTransactions);
         setLastFetch(new Date());
-        console.log('✅ Transactions loaded:', response.data.data.transactions?.length || 0);
+        console.log('✅ All transactions loaded:', allTransactions.length);
       }
     } catch (error) {
       console.error('❌ Fetch transactions error:', error);
@@ -97,26 +76,86 @@ const Pemasukan = ({ storeInfo, api, user }) => {
       
       // Set empty transactions if error
       setTransactions([]);
+      setFilteredTransactions([]);
     } finally {
       setLoading(false);
     }
-  }, [api, user, selectedPeriod]);
+  }, [api, user]);
 
-  // Load transactions when component mounts or period changes
+  // Filter transactions based on date range
+  const applyDateFilter = useCallback(() => {
+    if (!startDate && !endDate) {
+      setFilteredTransactions(transactions);
+      return;
+    }
+
+    const filtered = transactions.filter(transaction => {
+      const transactionDate = new Date(transaction.createdAt);
+      const start = startDate ? new Date(startDate + 'T00:00:00') : null;
+      const end = endDate ? new Date(endDate + 'T23:59:59') : null;
+
+      if (start && end) {
+        return transactionDate >= start && transactionDate <= end;
+      } else if (start) {
+        return transactionDate >= start;
+      } else if (end) {
+        return transactionDate <= end;
+      }
+      return true;
+    });
+
+    setFilteredTransactions(filtered);
+  }, [transactions, startDate, endDate]);
+
+  // Apply filter when date changes
+  useEffect(() => {
+    applyDateFilter();
+  }, [applyDateFilter]);
+
+  // Load transactions when component mounts
   useEffect(() => {
     if (user && api) {
       fetchTransactions();
     }
-  }, [user, api, selectedPeriod, fetchTransactions]);
+  }, [user, api, fetchTransactions]);
 
-  // Calculate statistics from real data
+  // Quick filter functions
+  const setQuickFilter = (type) => {
+    const today = new Date();
+    
+    switch (type) {
+      case 'today':
+        const todayStr = today.toISOString().split('T')[0];
+        setStartDate(todayStr);
+        setEndDate(todayStr);
+        break;
+      case 'week':
+        const weekAgo = new Date(today);
+        weekAgo.setDate(weekAgo.getDate() - 7);
+        setStartDate(weekAgo.toISOString().split('T')[0]);
+        setEndDate(today.toISOString().split('T')[0]);
+        break;
+      case 'month':
+        const monthAgo = new Date(today);
+        monthAgo.setMonth(monthAgo.getMonth() - 1);
+        setStartDate(monthAgo.toISOString().split('T')[0]);
+        setEndDate(today.toISOString().split('T')[0]);
+        break;
+      case 'all':
+        setStartDate('');
+        setEndDate('');
+        break;
+    }
+  };
+
+  // Calculate statistics from filtered data
   const getStats = useCallback(() => {
-    const totalRevenue = transactions.reduce((sum, t) => sum + (t.amount || 0), 0);
-    const totalTransactions = transactions.length;
+    const totalRevenue = filteredTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
+    const totalTransactions = filteredTransactions.length;
     const averageTransaction = totalTransactions > 0 ? totalRevenue / totalTransactions : 0;
     
     // Calculate total items from transaction items
-    const totalItems = transactions.reduce((sum, t) => {
+    const totalItems = filteredTransactions.reduce((sum, t) => {
       return sum + (t.items ? t.items.reduce((itemSum, item) => itemSum + (item.quantity || 0), 0) : 0);
     }, 0);
 
@@ -132,7 +171,7 @@ const Pemasukan = ({ storeInfo, api, user }) => {
       revenueGrowth: Number(revenueGrowth.toFixed(1)),
       transactionGrowth: Number(transactionGrowth.toFixed(1))
     };
-  }, [transactions]);
+  }, [filteredTransactions]);
 
   const stats = getStats();
 
@@ -142,7 +181,7 @@ const Pemasukan = ({ storeInfo, api, user }) => {
         <div className="bg-gradient-to-br from-emerald-100 to-emerald-200 p-3 rounded-xl">
           <Icon className="text-emerald-600" size={24} />
         </div>
-        {change && (
+        {change !== undefined && change !== 0 && (
           <div className={`flex items-center gap-1 px-2 py-1 rounded-lg text-sm font-medium ${
             changeType === 'positive' 
               ? 'bg-green-100 text-green-700' 
@@ -159,6 +198,16 @@ const Pemasukan = ({ storeInfo, api, user }) => {
       </div>
     </div>
   );
+
+  const getFilterLabel = () => {
+    if (!startDate && !endDate) return 'Semua Transaksi';
+    if (startDate && endDate) {
+      if (startDate === endDate) return `${formatDate(startDate)}`;
+      return `${formatDate(startDate)} - ${formatDate(endDate)}`;
+    }
+    if (startDate) return `Sejak ${formatDate(startDate)}`;
+    if (endDate) return `Sampai ${formatDate(endDate)}`;
+  };
 
   return (
     <div className="space-y-8">
@@ -179,30 +228,15 @@ const Pemasukan = ({ storeInfo, api, user }) => {
           </p>
         </div>
 
-        {/* Period Selector and Refresh */}
+        {/* Controls */}
         <div className="flex items-center gap-3">
-          <div className="flex bg-white/60 backdrop-blur-sm p-1 rounded-2xl border border-slate-200/50">
-            {[
-              { id: 'today', label: 'Hari Ini' },
-              { id: 'yesterday', label: 'Kemarin' },
-              { id: 'week', label: '7 Hari' },
-              { id: 'month', label: '30 Hari' },
-              { id: 'all', label: 'Semua' }
-            ].map((period) => (
-              <button
-                key={period.id}
-                onClick={() => setSelectedPeriod(period.id)}
-                disabled={loading}
-                className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-200 disabled:opacity-50 ${
-                  selectedPeriod === period.id
-                    ? 'bg-emerald-600 text-white shadow-lg'
-                    : 'text-slate-600 hover:text-slate-800 hover:bg-slate-100/50'
-                }`}
-              >
-                {period.label}
-              </button>
-            ))}
-          </div>
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className="bg-white/80 backdrop-blur-sm px-4 py-2 rounded-xl border border-slate-200/50 hover:bg-slate-100 transition-colors flex items-center gap-2"
+          >
+            <Filter size={18} className="text-slate-600" />
+            <span className="text-slate-700 font-medium">Filter</span>
+          </button>
           
           <button
             onClick={fetchTransactions}
@@ -214,6 +248,61 @@ const Pemasukan = ({ storeInfo, api, user }) => {
           </button>
         </div>
       </div>
+
+      {/* Filter Panel */}
+      {showFilters && (
+        <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-slate-200/50 shadow-lg">
+          <h3 className="text-lg font-semibold text-slate-800 mb-4">Filter Transaksi</h3>
+          
+          {/* Quick Filters */}
+          <div className="flex flex-wrap gap-2 mb-4">
+            {[
+              { id: 'all', label: 'Semua' },
+              { id: 'today', label: 'Hari Ini' },
+              { id: 'week', label: '7 Hari' },
+              { id: 'month', label: '30 Hari' }
+            ].map((filter) => (
+              <button
+                key={filter.id}
+                onClick={() => setQuickFilter(filter.id)}
+                className="px-3 py-1 rounded-lg text-sm font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors"
+              >
+                {filter.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Date Range Inputs */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                Tanggal Mulai
+              </label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                Tanggal Akhir
+              </label>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+          </div>
+
+          <div className="mt-4 text-sm text-slate-600">
+            Filter aktif: <span className="font-medium">{getFilterLabel()}</span>
+          </div>
+        </div>
+      )}
 
       {/* Error Display */}
       {error && (
@@ -255,7 +344,10 @@ const Pemasukan = ({ storeInfo, api, user }) => {
         <div className="p-6 border-b border-slate-200/50">
           <h2 className="text-xl font-bold text-slate-800 flex items-center gap-3">
             <Calendar className="text-slate-600" size={22} />
-            Detail Transaksi ({transactions.length})
+            Detail Transaksi ({filteredTransactions.length})
+            <span className="text-sm font-normal text-slate-500">
+              dari {transactions.length} total
+            </span>
           </h2>
         </div>
         
@@ -289,7 +381,7 @@ const Pemasukan = ({ storeInfo, api, user }) => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200/50">
-                {transactions.length === 0 ? (
+                {filteredTransactions.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="px-6 py-12 text-center">
                       <div className="text-slate-400">
@@ -298,13 +390,13 @@ const Pemasukan = ({ storeInfo, api, user }) => {
                           {error ? 'Gagal memuat transaksi' : 'Tidak ada transaksi'}
                         </p>
                         <p className="text-sm">
-                          {error ? 'Periksa koneksi dan coba lagi' : `untuk periode ${selectedPeriod === 'today' ? 'hari ini' : selectedPeriod}`}
+                          {error ? 'Periksa koneksi dan coba lagi' : 'untuk filter yang dipilih'}
                         </p>
                       </div>
                     </td>
                   </tr>
                 ) : (
-                  transactions.map((transaction) => (
+                  filteredTransactions.map((transaction) => (
                     <tr key={transaction.id} className="hover:bg-slate-50/30 transition-colors">
                       <td className="px-6 py-4">
                         <div>
@@ -363,11 +455,12 @@ const Pemasukan = ({ storeInfo, api, user }) => {
         )}
 
         {/* Summary Footer */}
-        {transactions.length > 0 && (
+        {filteredTransactions.length > 0 && (
           <div className="p-6 border-t border-slate-200/50 bg-slate-50/30">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <div className="text-slate-600">
-                Menampilkan {transactions.length} transaksi untuk {selectedPeriod === 'today' ? 'hari ini' : selectedPeriod}
+                Menampilkan {filteredTransactions.length} dari {transactions.length} transaksi
+                <div className="text-sm text-slate-500">{getFilterLabel()}</div>
               </div>
               <div className="flex items-center gap-6">
                 <div className="text-slate-700">

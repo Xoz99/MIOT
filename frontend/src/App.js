@@ -3,6 +3,10 @@ import axios from 'axios';
 import LoginForm from './components/auth/LoginForm';
 import RegisterForm from './components/auth/RegisterForm';
 import Dashboard from './pages/Dashboard';
+import RFIDCardRegistration from './components/rfid/RFIDCardRegistration';
+import RFIDCardManagement from './components/rfid/RFIDCardManagement';
+import CustomerRFIDRegistration from './components/rfid/CustomerRFIDRegistration';
+import InStoreTopUp from './components/rfid/InStoreTopUp';
 import './index.css';
 
 // Backend API configuration
@@ -25,12 +29,28 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Add response interceptor for 401 errors
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('authToken');
+      window.location.reload();
+    }
+    return Promise.reject(error);
+  }
+);
+
 const App = () => {
+  // Enhanced state management untuk RFID system
   const [currentView, setCurrentView] = useState('login');
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [user, setUser] = useState(null);
+  
+  // RFID Connection state - bisa diatur dari settings nanti
+  const [rfidConnected, setRfidConnected] = useState(true);
   
   const [storeInfo, setStoreInfo] = useState({
     name: 'Loading...',
@@ -84,10 +104,8 @@ const App = () => {
       if (response.data.success) {
         const { token, merchant } = response.data.data;
         
-        // Save token to localStorage
         localStorage.setItem('authToken', token);
         
-        // Update states
         setUser(merchant);
         setStoreInfo({
           name: merchant.storeName,
@@ -128,10 +146,8 @@ const App = () => {
       if (response.data.success) {
         const { token, merchant } = response.data.data;
         
-        // Save token to localStorage
         localStorage.setItem('authToken', token);
         
-        // Update states
         setUser(merchant);
         setStoreInfo({
           name: merchant.storeName,
@@ -151,14 +167,12 @@ const App = () => {
   };
 
   const handleLogout = () => {
-    // Clear token and user data
     localStorage.removeItem('authToken');
     setUser(null);
     setIsLoggedIn(false);
     setCurrentView('login');
     setError('');
     
-    // Reset store info
     setStoreInfo({
       name: 'Warung Modern',
       owner: 'Pemilik Toko',
@@ -166,6 +180,45 @@ const App = () => {
     });
   };
 
+  // All Navigation functions
+  const showCardRegistration = () => {
+    setCurrentView('card-registration');
+    setError('');
+  };
+
+  const showCardManagement = () => {
+    setCurrentView('card-management');
+    setError('');
+  };
+
+  const showDashboard = () => {
+    setCurrentView('dashboard');
+    setError('');
+  };
+
+  // NEW: Customer RFID functions
+  const showCustomerRegistration = () => {
+    setCurrentView('customer-registration');
+    setError('');
+  };
+
+  const showInStoreTopUp = () => {
+    setCurrentView('in-store-topup');
+    setError('');
+  };
+
+  // Handle successful operations
+  const handleCardRegistered = (cardData) => {
+    console.log('Card registered:', cardData);
+    setCurrentView('card-management');
+  };
+
+  const handleSuccess = (data) => {
+    console.log('Operation successful:', data);
+    // Bisa redirect ke halaman yang sesuai atau show success message
+  };
+
+  // Render berdasarkan currentView
   if (currentView === 'login') {
     return (
       <LoginForm
@@ -184,10 +237,131 @@ const App = () => {
         onSwitchToLogin={() => setCurrentView('login')}
         loading={loading}
         error={error}
+        // INI YANG KURANG - props untuk navigation
+        onShowCustomerRegistration={showCustomerRegistration}
+        onShowInStoreTopUp={showInStoreTopUp}
       />
     );
   }
 
+  // NEW: Customer Registration Page
+  if (currentView === 'customer-registration') {
+    return (
+      <div>
+        <div className="absolute top-4 left-4 z-10">
+          <button
+            onClick={() => setCurrentView('register')}
+            className="bg-white/80 backdrop-blur-sm px-4 py-2 rounded-xl border border-slate-200/50 hover:bg-slate-100 transition-colors flex items-center gap-2 text-slate-700 font-medium shadow-lg"
+          >
+            ← Kembali ke Register
+          </button>
+        </div>
+        
+        <CustomerRFIDRegistration 
+          rfidConnected={rfidConnected}
+          api={api}
+          onSuccess={(data) => {
+            console.log('Customer registration success:', data);
+            setCurrentView('register');
+          }}
+        />
+      </div>
+    );
+  }
+
+  // NEW: In-Store Top Up Page
+  if (currentView === 'in-store-topup') {
+    return (
+      <div>
+        <div className="absolute top-4 left-4 z-10">
+          <button
+            onClick={() => setCurrentView('register')}
+            className="bg-white/80 backdrop-blur-sm px-4 py-2 rounded-xl border border-slate-200/50 hover:bg-slate-100 transition-colors flex items-center gap-2 text-slate-700 font-medium shadow-lg"
+          >
+            ← Kembali ke Register
+          </button>
+        </div>
+        
+        <InStoreTopUp 
+          rfidConnected={rfidConnected}
+          api={api}
+          onSuccess={(data) => {
+            console.log('Top up success:', data);
+            setCurrentView('register');
+          }}
+        />
+      </div>
+    );
+  }
+
+  // RFID Card Registration Page (untuk merchant)
+  if (currentView === 'card-registration') {
+    return (
+      <div>
+        <div className="absolute top-4 left-4 z-10">
+          <button
+            onClick={showDashboard}
+            className="bg-white/80 backdrop-blur-sm px-4 py-2 rounded-xl border border-slate-200/50 hover:bg-slate-100 transition-colors flex items-center gap-2 text-slate-700 font-medium shadow-lg"
+          >
+            ← Kembali ke Dashboard
+          </button>
+        </div>
+        
+        <div className="absolute top-4 right-4 z-10">
+          <button
+            onClick={handleLogout}
+            className="bg-red-500 text-white px-4 py-2 rounded-xl font-medium hover:bg-red-600 transition-colors shadow-lg"
+          >
+            Logout
+          </button>
+        </div>
+        
+        <RFIDCardRegistration 
+          rfidConnected={rfidConnected}
+          onCardRegistered={handleCardRegistered}
+          api={api}
+        />
+      </div>
+    );
+  }
+
+  // RFID Card Management Page
+  if (currentView === 'card-management') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-4">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex items-center justify-between mb-8">
+            <button
+              onClick={showDashboard}
+              className="bg-white/80 backdrop-blur-sm px-4 py-2 rounded-xl border border-slate-200/50 hover:bg-slate-100 transition-colors flex items-center gap-2 text-slate-700 font-medium shadow-lg"
+            >
+              ← Kembali ke Dashboard
+            </button>
+            
+            <div className="flex items-center gap-3">
+              <span className="text-slate-600 text-sm">
+                {storeInfo.name} | {user?.email}
+              </span>
+              <button
+                onClick={handleLogout}
+                className="bg-red-500 text-white px-4 py-2 rounded-xl font-medium hover:bg-red-600 transition-colors"
+              >
+                Logout
+              </button>
+            </div>
+          </div>
+          
+          <RFIDCardManagement 
+            api={api}
+            user={user}
+            onShowRegistration={showCardRegistration}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  // Default Dashboard
   return (
     <Dashboard
       storeInfo={storeInfo}
@@ -195,6 +369,10 @@ const App = () => {
       onLogout={handleLogout}
       user={user}
       api={api}
+      onShowCardRegistration={showCardRegistration}
+      onShowCardManagement={showCardManagement}
+      rfidConnected={rfidConnected}
+      setRfidConnected={setRfidConnected}
     />
   );
 };
