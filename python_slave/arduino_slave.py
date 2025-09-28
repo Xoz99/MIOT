@@ -1,245 +1,340 @@
 #!/usr/bin/env python3
+"""
+RFID Bridge - Menghubungkan Arduino RFID dengan Backend API
+Compatible dengan format Arduino: UID:xxx, PIN:xxx, SYSTEM READY, PIN_CLEARED
+"""
+
 import serial
+import requests
+import asyncio
+import websockets
+import json
 import time
-import psycopg2
-from datetime import datetime
-import os
 import logging
+import os
+from threading import Thread
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
+# Load environment variables
 load_dotenv()
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler("arduino_slave.log"),
+        logging.FileHandler("rfid_bridge.log"),
         logging.StreamHandler()
     ]
 )
-logger = logging.getLogger("ArduinoSlave")
+logger = logging.getLogger("RFIDBridge")
 
-# Communication protocol constants
-CMD_READY = 0x01
-CMD_RFID_DATA = 0x02
-CMD_KEYPAD_DATA = 0x03
-CMD_ACK = 0x04
-
-# PostgreSQL connection parameters
-DB_HOST = os.getenv('DB_HOST', 'localhost')
-DB_PORT = os.getenv('DB_PORT', '5432')
-DB_NAME = os.getenv('DB_NAME', 'rfid_ewallet')
-DB_USER = os.getenv('DB_USER', 'andrianadiwahyono')
-DB_PASSWORD = os.getenv('DB_PASSWORD', '123')
-
-class ArduinoSlave:
-    def __init__(self, port='COM4', baud_rate=9600):
-        self.port = port
-        self.baud_rate = baud_rate
-        self.serial = None
-        self.db_conn = None
-        self.db_cursor = None
+class RFIDBridge:
+    def __init__(self):
+        # Serial Configuration
+        self.serial_port = os.getenv('SERIAL_PORT', 'COM4')
+        self.baud_rate = int(os.getenv('BAUD_RATE', '9600'))
+        self.serial_conn = None
         
-    def connect_to_arduino(self):
-        """Connect to Arduino via serial port"""
+        # API Configuration
+        self.api_base_url = os.getenv('API_BASE_URL', 'http://localhost:3001/api')
+        self.api_token = os.getenv('API_TOKEN', '')
+        
+        # WebSocket Configuration
+        self.ws_port = int(os.getenv('WS_PORT', '8765'))
+        self.connected_clients = set()
+        
+        # State Management
+        self.current_card_id = None
+        self.transaction_state = "idle"  # idle, waiting_pin, processing
+        self.session_data = {}
+        
+    async def start_websocket_server(self):
+        """Start WebSocket server untuk real-time communication dengan frontend"""
+        async def handle_client(websocket, path):
+            logger.info(f"New WebSocket client connected: {websocket.remote_address}")
+            self.connected_clients.add(websocket)
+            try:
+                await websocket.wait_closed()
+            finally:
+                self.connected_clients.remove(websocket)
+                logger.info(f"WebSocket client disconnected: {websocket.remote_address}")
+        
+        server = await websockets.serve(handle_client, "localhost", self.ws_port)
+        logger.info(f"WebSocket server started on ws://localhost:{self.ws_port}")
+        return server
+    
+    async def broadcast_to_clients(self, message):
+        """Broadcast message ke semua connected WebSocket clients"""
+        if self.connected_clients:
+            disconnected = set()
+            for client in self.connected_clients:
+                try:
+                    await client.send(json.dumps(message))
+                except websockets.exceptions.ConnectionClosed:
+                    disconnected.add(client)
+            
+            # Remove disconnected clients
+            self.connected_clients -= disconnected
+    
+    def connect_serial(self):
+        """Connect ke Arduino via serial"""
         try:
-            self.serial = serial.Serial(self.port, self.baud_rate, timeout=1)
-            logger.info(f"Connected to Arduino on {self.port}")
+            self.serial_conn = serial.Serial(
+                port=self.serial_port,
+                baudrate=self.baud_rate,
+                timeout=1
+            )
+            logger.info(f"Connected to Arduino on {self.serial_port}")
             return True
         except serial.SerialException as e:
             logger.error(f"Failed to connect to Arduino: {e}")
             return False
-            
-    def connect_to_database(self):
-        """Connect to PostgreSQL database"""
+    
+    def send_api_request(self, endpoint, method='GET', data=None):
+        """Send request ke backend API"""
+        url = f"{self.api_base_url}{endpoint}"
+        headers = {
+            'Content-Type': 'application/json'
+        }
+        
+        if self.api_token:
+            headers['Authorization'] = f"Bearer {self.api_token}"
+        
         try:
-            self.db_conn = psycopg2.connect(
-                host=DB_HOST,
-                port=DB_PORT,
-                database=DB_NAME,
-                user=DB_USER,
-                password=DB_PASSWORD
-            )
-            self.db_cursor = self.db_conn.cursor()
-            logger.info("Connected to PostgreSQL database")
-            self._create_tables_if_not_exist()
-            return True
-        except psycopg2.Error as e:
-            logger.error(f"Failed to connect to database: {e}")
-            return False
+            if method == 'GET':
+                response = requests.get(url, headers=headers)
+            elif method == 'POST':
+                response = requests.post(url, headers=headers, json=data)
+            elif method == 'PUT':
+                response = requests.put(url, headers=headers, json=data)
             
-    def _create_tables_if_not_exist(self):
-        """Create necessary tables if they don't exist"""
-        try:
-            # Create RFID table
-            self.db_cursor.execute("""
-                CREATE TABLE IF NOT EXISTS rfid_readings (
-                    id SERIAL PRIMARY KEY,
-                    card_id VARCHAR(50) NOT NULL,
-                    timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            
-            # Create keypad table
-            self.db_cursor.execute("""
-                CREATE TABLE IF NOT EXISTS keypad_inputs (
-                    id SERIAL PRIMARY KEY,
-                    input_value VARCHAR(50) NOT NULL,
-                    timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            
-            self.db_conn.commit()
-            logger.info("Database tables created or already exist")
-        except psycopg2.Error as e:
-            logger.error(f"Error creating tables: {e}")
-            self.db_conn.rollback()
-            
-    def handshake_with_arduino(self):
-        """Perform initial handshake with Arduino"""
-        if not self.serial:
-            logger.error("Serial connection not established")
-            return False
-            
-        # Wait for ready signal from Arduino
-        logger.info("Waiting for Arduino ready signal...")
-        while True:
-            if self.serial.in_waiting > 0:
-                cmd = ord(self.serial.read())
-                if cmd == CMD_READY:
-                    # Send acknowledgment
-                    self.serial.write(bytes([CMD_ACK]))
-                    logger.info("Handshake successful")
-                    return True
-            time.sleep(0.1)
-            
-    def send_acknowledgment(self):
-        """Send acknowledgment to Arduino"""
-        self.serial.write(bytes([CMD_ACK]))
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            logger.error(f"API request failed: {e}")
+            return {"success": False, "message": str(e)}
+    
+    async def handle_card_scan(self, card_id):
+        """Handle ketika kartu RFID di-scan"""
+        logger.info(f"Card scanned: {card_id}")
         
-    def read_rfid_data(self):
-        """Read RFID data from Arduino"""
-        # Read data length
-        data_length = ord(self.serial.read())
+        self.current_card_id = card_id
+        self.transaction_state = "waiting_pin"
         
-        # Read data
-        data = ""
-        for _ in range(data_length):
-            data += chr(ord(self.serial.read()))
-            
-        logger.info(f"Received RFID data: {data}")
-        return data
+        # Broadcast ke frontend
+        await self.broadcast_to_clients({
+            "type": "card_scanned",
+            "cardId": card_id,
+            "timestamp": time.time()
+        })
         
-    def read_keypad_data(self):
-        """Read keypad data from Arduino"""
-        # Read data length
-        data_length = ord(self.serial.read())
+        # Optional: Verify card exists in database
+        card_info = self.send_api_request(f"/rfid/verify", 'POST', {
+            "cardId": card_id,
+            "pin": "000000"  # Dummy PIN untuk check card existence
+        })
         
-        # Read data
-        data = ""
-        for _ in range(data_length):
-            data += chr(ord(self.serial.read()))
-            
-        logger.info(f"Received keypad data: {data}")
-        return data
+        if card_info.get("success"):
+            await self.broadcast_to_clients({
+                "type": "card_verified",
+                "cardId": card_id,
+                "cardData": card_info.get("data", {})
+            })
+        else:
+            await self.broadcast_to_clients({
+                "type": "card_error",
+                "cardId": card_id,
+                "message": "Kartu tidak terdaftar"
+            })
+    
+    async def handle_pin_input(self, pin):
+        """Handle ketika PIN dimasukkan"""
+        logger.info(f"PIN entered: {'*' * len(pin)}")
         
-    def store_rfid_data(self, card_id):
-        """Store RFID data in database"""
-        try:
-            self.db_cursor.execute(
-                "INSERT INTO rfid_readings (card_id) VALUES (%s) RETURNING id",
-                (card_id,)
-            )
-            record_id = self.db_cursor.fetchone()[0]
-            self.db_conn.commit()
-            logger.info(f"Stored RFID data with ID: {record_id}")
-            return record_id
-        except psycopg2.Error as e:
-            logger.error(f"Error storing RFID data: {e}")
-            self.db_conn.rollback()
-            return None
-            
-    def store_keypad_data(self, input_value):
-        """Store keypad data in database"""
-        try:
-            self.db_cursor.execute(
-                "INSERT INTO keypad_inputs (input_value) VALUES (%s) RETURNING id",
-                (input_value,)
-            )
-            record_id = self.db_cursor.fetchone()[0]
-            self.db_conn.commit()
-            logger.info(f"Stored keypad data with ID: {record_id}")
-            return record_id
-        except psycopg2.Error as e:
-            logger.error(f"Error storing keypad data: {e}")
-            self.db_conn.rollback()
-            return None
-            
-    def run(self):
-        """Main loop to process Arduino commands"""
-        if not self.serial or not self.db_conn:
-            logger.error("Serial or database connection not established")
+        if not self.current_card_id:
+            logger.warning("PIN entered but no card scanned")
             return
+        
+        self.transaction_state = "processing"
+        
+        # Broadcast PIN received
+        await self.broadcast_to_clients({
+            "type": "pin_entered",
+            "cardId": self.current_card_id,
+            "pinLength": len(pin)
+        })
+        
+        # Verify card + PIN with backend
+        verification_result = self.send_api_request("/rfid/verify", 'POST', {
+            "cardId": self.current_card_id,
+            "pin": pin
+        })
+        
+        if verification_result.get("success"):
+            logger.info("Card and PIN verified successfully")
+            await self.broadcast_to_clients({
+                "type": "verification_success",
+                "cardId": self.current_card_id,
+                "cardData": verification_result.get("data", {})
+            })
             
-        logger.info("Starting main processing loop")
-        try:
-            while True:
-                if self.serial.in_waiting > 0:
-                    cmd = ord(self.serial.read())
+            # Store session data untuk payment processing
+            self.session_data = {
+                "cardId": self.current_card_id,
+                "pin": pin,
+                "cardData": verification_result.get("data", {}),
+                "verified_at": time.time()
+            }
+            
+        else:
+            logger.warning("Card/PIN verification failed")
+            await self.broadcast_to_clients({
+                "type": "verification_failed",
+                "cardId": self.current_card_id,
+                "message": verification_result.get("message", "PIN salah")
+            })
+        
+        # Reset state
+        self.transaction_state = "idle"
+        self.current_card_id = None
+    
+    async def handle_pin_cleared(self):
+        """Handle ketika PIN dihapus dengan tombol *"""
+        logger.info("PIN cleared")
+        await self.broadcast_to_clients({
+            "type": "pin_cleared",
+            "cardId": self.current_card_id
+        })
+    
+    async def process_payment(self, amount, description="POS Payment"):
+        """Process payment menggunakan session data"""
+        if not self.session_data:
+            return {"success": False, "message": "No verified session"}
+        
+        # Check session timeout (5 minutes)
+        if time.time() - self.session_data.get("verified_at", 0) > 300:
+            self.session_data = {}
+            return {"success": False, "message": "Session expired"}
+        
+        payment_data = {
+            "cardId": self.session_data["cardId"],
+            "pin": self.session_data["pin"],
+            "amount": amount,
+            "description": description
+        }
+        
+        payment_result = self.send_api_request("/rfid/payment", 'POST', payment_data)
+        
+        # Broadcast payment result
+        await self.broadcast_to_clients({
+            "type": "payment_processed",
+            "success": payment_result.get("success", False),
+            "data": payment_result.get("data", {}),
+            "message": payment_result.get("message", "")
+        })
+        
+        # Clear session after payment
+        if payment_result.get("success"):
+            self.session_data = {}
+        
+        return payment_result
+    
+    def read_serial_loop(self):
+        """Main loop untuk membaca data dari Arduino"""
+        logger.info("Starting serial read loop")
+        
+        while True:
+            if self.serial_conn and self.serial_conn.in_waiting > 0:
+                try:
+                    line = self.serial_conn.readline().decode('utf-8').strip()
                     
-                    if cmd == CMD_RFID_DATA:
-                        # Process RFID data
-                        rfid_data = self.read_rfid_data()
-                        self.store_rfid_data(rfid_data)
-                        self.send_acknowledgment()
+                    if line:
+                        asyncio.run_coroutine_threadsafe(
+                            self.process_arduino_message(line),
+                            self.loop
+                        )
                         
-                    elif cmd == CMD_KEYPAD_DATA:
-                        # Process keypad data
-                        keypad_data = self.read_keypad_data()
-                        self.store_keypad_data(keypad_data)
-                        self.send_acknowledgment()
-                        
-                    elif cmd == CMD_READY:
-                        # Respond to ready signal
-                        self.send_acknowledgment()
-                        
-                time.sleep(0.01)  # Small delay to prevent CPU hogging
-                
+                except UnicodeDecodeError:
+                    logger.warning("Failed to decode serial message")
+                except Exception as e:
+                    logger.error(f"Error reading serial: {e}")
+            
+            time.sleep(0.1)
+    
+    async def process_arduino_message(self, message):
+        """Process message dari Arduino"""
+        logger.info(f"Arduino message: {message}")
+        
+        if message == "SYSTEM READY":
+            await self.broadcast_to_clients({
+                "type": "arduino_ready",
+                "message": "Arduino system ready"
+            })
+            
+        elif message.startswith("UID:"):
+            card_id = message[4:]  # Remove "UID:" prefix
+            await self.handle_card_scan(card_id)
+            
+        elif message.startswith("PIN:"):
+            pin = message[4:]  # Remove "PIN:" prefix
+            await self.handle_pin_input(pin)
+            
+        elif message == "PIN_CLEARED":
+            await self.handle_pin_cleared()
+        
+        else:
+            logger.warning(f"Unknown Arduino message: {message}")
+    
+    async def main(self):
+        """Main coroutine"""
+        self.loop = asyncio.get_event_loop()
+        
+        # Start WebSocket server
+        ws_server = await self.start_websocket_server()
+        
+        # Connect to Arduino
+        if not self.connect_serial():
+            logger.error("Failed to connect to Arduino")
+            return
+        
+        # Start serial reading thread
+        serial_thread = Thread(target=self.read_serial_loop, daemon=True)
+        serial_thread.start()
+        
+        logger.info("RFID Bridge is running...")
+        logger.info("- Arduino serial communication: Active")
+        logger.info("- WebSocket server: Active")
+        logger.info("- API backend integration: Ready")
+        
+        try:
+            # Keep the server running
+            await ws_server.wait_closed()
         except KeyboardInterrupt:
-            logger.info("Program terminated by user")
-        except Exception as e:
-            logger.error(f"Unexpected error: {e}")
+            logger.info("Shutting down...")
         finally:
-            # Clean up
-            if self.serial and self.serial.is_open:
-                self.serial.close()
-                logger.info("Serial connection closed")
-                
-            if self.db_conn:
-                self.db_cursor.close()
-                self.db_conn.close()
-                logger.info("Database connection closed")
+            if self.serial_conn:
+                self.serial_conn.close()
 
 if __name__ == "__main__":
-    # Create and run Arduino slave
-    slave = ArduinoSlave()
+    # Create .env file example
+    env_example = """
+# Serial Configuration
+SERIAL_PORT=COM4
+BAUD_RATE=9600
+
+# API Configuration  
+API_BASE_URL=http://localhost:3001/api
+API_TOKEN=your_jwt_token_here
+
+# WebSocket Configuration
+WS_PORT=8765
+"""
     
-    # Connect to Arduino
-    if not slave.connect_to_arduino():
-        logger.error("Failed to connect to Arduino. Exiting.")
-        exit(1)
-        
-    # Connect to database
-    if not slave.connect_to_database():
-        logger.error("Failed to connect to database. Exiting.")
-        exit(1)
-        
-    # Perform handshake with Arduino
-    if not slave.handshake_with_arduino():
-        logger.error("Failed to handshake with Arduino. Exiting.")
-        exit(1)
-        
-    # Run main loop
-    slave.run()
+    if not os.path.exists('.env'):
+        with open('.env', 'w') as f:
+            f.write(env_example)
+        print("Created .env file. Please configure your settings.")
+    
+    # Run the bridge
+    bridge = RFIDBridge()
+    asyncio.run(bridge.main())
