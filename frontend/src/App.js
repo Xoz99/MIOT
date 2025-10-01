@@ -6,7 +6,7 @@ import Dashboard from './pages/Dashboard';
 import './index.css';
 
 // Backend API configuration
-const API_BASE_URL = 'http://localhost:3001/api';
+const API_BASE_URL = 'http://192.168.1.44:3001/api';
 
 // Create axios instance
 const api = axios.create({
