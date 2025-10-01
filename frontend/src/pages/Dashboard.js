@@ -18,7 +18,7 @@ const Dashboard = ({ storeInfo, setStoreInfo, onLogout, user, api }) => {
 
   // State untuk Web Serial API
   const [serialPort, setSerialPort] = useState(null);
-  const [rfidData, setRfidData] = useState({ uid: null, pin: null });
+  const [rfidData, setRfidData] = useState({ uid: null, pin: null, timestamp: null });
   
   // State untuk produk & data
   const [products, setProducts] = useState([]);
@@ -40,27 +40,35 @@ const Dashboard = ({ storeInfo, setStoreInfo, onLogout, user, api }) => {
 
     if (trimmedData.startsWith("UID:")) {
       const uid = trimmedData.split(":")[1];
-      setRfidData({ uid: uid, pin: null }); // Selalu reset state saat kartu baru di-scan
+      console.log("New UID detected:", uid);
+      
+      // Set dengan timestamp untuk memaksa re-render
+      setRfidData({ 
+        uid: uid, 
+        pin: null,
+        timestamp: Date.now()
+      });
     } else if (trimmedData.startsWith("PIN:")) {
       const pin = trimmedData.split(":")[1];
-      setRfidData(prev => ({ ...prev, pin: pin }));
+      console.log("PIN received:", pin);
+      setRfidData(prev => ({ 
+        ...prev, 
+        pin: pin 
+      }));
     } else {
       console.log("Data tidak dikenal diabaikan:", trimmedData);
     }
   }, []);
 
- const handleDisconnect = useCallback(async () => {
+  const handleDisconnect = useCallback(async () => {
     if (!serialPort) return;
     try {
-        // Menutup port akan menyebabkan error di readLoop,
-        // yang kemudian akan memicu cleanup di useEffect.
-        await serialPort.close();
-        setSerialPort(null); // Set port menjadi null untuk finalisasi state
+      await serialPort.close();
+      setSerialPort(null);
     } catch(err) {
-        console.error("Gagal menutup port:", err);
+      console.error("Gagal menutup port:", err);
     }
   }, [serialPort]);
-
 
   // useEffect untuk mengelola seluruh siklus hidup koneksi serial
   useEffect(() => {
@@ -75,7 +83,6 @@ const Dashboard = ({ storeInfo, setStoreInfo, onLogout, user, api }) => {
     const readLoop = async () => {
       const textDecoder = new TextDecoderStream();
       try {
-        // Peringatan: readableStreamClosed tidak digunakan, tapi ini cara standar untuk setup
         serialPort.readable.pipeTo(textDecoder.writable);
         reader = textDecoder.readable.getReader();
 
@@ -90,25 +97,22 @@ const Dashboard = ({ storeInfo, setStoreInfo, onLogout, user, api }) => {
           });
         }
       } catch (error) {
-        // Error DOMException wajar terjadi saat port ditutup secara paksa
         if (error.name !== 'DOMException') {
-            console.error("Error saat membaca serial:", error);
+          console.error("Error saat membaca serial:", error);
         }
       }
     };
 
     readLoop();
 
-    // Fungsi cleanup: Ini adalah bagian terpenting
     return () => {
       keepReading = false;
       if (reader) {
-        reader.cancel().catch(() => {}); // Cancel reader, abaikan error jika ada
+        reader.cancel().catch(() => {});
       }
       setRfidConnected(false);
     };
   }, [serialPort, processArduinoData]); 
-
 
   const handleConnect = useCallback(async () => {
     if (!('serial' in navigator)) {
@@ -119,14 +123,17 @@ const Dashboard = ({ storeInfo, setStoreInfo, onLogout, user, api }) => {
       const port = await navigator.serial.requestPort();
       await port.open({ baudRate: 9600 });
       setRfidConnected(true);
-      setSerialPort(port); // Set port di sini untuk memicu useEffect
+      setSerialPort(port);
     } catch (err) {
       console.error("Gagal memilih atau membuka port:", err);
     }
   }, []);
   
-  // --- AKHIR DARI LOGIKA WEB SERIAL API ---
-
+  // Clear RFID Data - PERBAIKAN
+  const clearRfidData = useCallback(() => {
+    console.log("Clearing RFID data...");
+    setRfidData({ uid: null, pin: null, timestamp: null });
+  }, []);
 
   // --- FUNGSI-FUNGSI APLIKASI LAINNYA ---
 
@@ -168,13 +175,26 @@ const Dashboard = ({ storeInfo, setStoreInfo, onLogout, user, api }) => {
   const addToCart = useCallback((product) => {
     setCart(prevCart => {
       const existing = prevCart.find(item => item.id === product.id);
+      
       if (existing) {
+        const newQuantity = existing.quantity + 1;
+        
+        if (newQuantity > product.stock) {
+          alert(`Stock tidak mencukupi!\n\nProduk: ${product.name}\nStock tersedia: ${product.stock}\nDi keranjang: ${existing.quantity}`);
+          return prevCart;
+        }
+        
         return prevCart.map(item => 
           item.id === product.id 
-            ? { ...item, quantity: item.quantity + 1 }
+            ? { ...item, quantity: newQuantity }
             : item
         );
       } else {
+        if (product.stock <= 0) {
+          alert(`Stock habis!\n\nProduk: ${product.name}\nStock: 0`);
+          return prevCart;
+        }
+        
         return [...prevCart, { ...product, quantity: 1 }];
       }
     });
@@ -187,14 +207,27 @@ const Dashboard = ({ storeInfo, setStoreInfo, onLogout, user, api }) => {
   const updateQuantity = useCallback((productId, newQuantity) => {
     if (newQuantity <= 0) {
       removeFromCart(productId);
-    } else {
-      setCart(prevCart => prevCart.map(item => 
+      return;
+    }
+
+    setCart(prevCart => {
+      const cartItem = prevCart.find(item => item.id === productId);
+      const product = products.find(p => p.id === productId);
+      
+      if (!cartItem || !product) return prevCart;
+      
+      if (newQuantity > product.stock) {
+        alert(`Stock tidak mencukupi!\n\nProduk: ${product.name}\nStock tersedia: ${product.stock}\nYang diminta: ${newQuantity}`);
+        return prevCart;
+      }
+      
+      return prevCart.map(item => 
         item.id === productId 
           ? { ...item, quantity: newQuantity }
           : item
-      ));
-    }
-  }, [removeFromCart]);
+      );
+    });
+  }, [removeFromCart, products]);
 
   const addProduct = useCallback(async (productData) => {
     if (!api) return { success: false, error: 'API tidak tersedia' };
@@ -220,8 +253,6 @@ const Dashboard = ({ storeInfo, setStoreInfo, onLogout, user, api }) => {
   }, [api]);
 
   const handlePaymentComplete = useCallback(() => {
-    // Implementasi setelah pembayaran berhasil
-    // Mungkin refresh produk dan membersihkan keranjang
     fetchProducts();
     setCart([]);
   }, [fetchProducts]);
@@ -238,7 +269,6 @@ const Dashboard = ({ storeInfo, setStoreInfo, onLogout, user, api }) => {
     setOwnerAuthenticated(true);
     setActiveTab('pemasukan');
   }, []);
-
 
   const renderActiveTab = useCallback(() => {
     const commonProps = {
@@ -258,7 +288,7 @@ const Dashboard = ({ storeInfo, setStoreInfo, onLogout, user, api }) => {
             updateQuantity={updateQuantity}
             rfidConnected={rfidConnected}
             rfidData={rfidData}
-            clearRfidData={() => setRfidData({ uid: null, pin: null })}
+            clearRfidData={clearRfidData}
             onPaymentComplete={handlePaymentComplete}
             {...commonProps}
           />
@@ -275,20 +305,23 @@ const Dashboard = ({ storeInfo, setStoreInfo, onLogout, user, api }) => {
       case 'pemasukan':
         return <Pemasukan storeInfo={storeInfo} user={user} {...commonProps} />;
       case 'settings':
-        return <SettingsPage 
-                  storeInfo={storeInfo} 
-                  setStoreInfo={setStoreInfo} 
-                  user={user} 
-                  {...commonProps}
-                  rfidData={rfidData} // <-- TAMBAHKAN PROP INI
-                />;
+        return (
+          <SettingsPage 
+            storeInfo={storeInfo} 
+            setStoreInfo={setStoreInfo} 
+            user={user} 
+            rfidData={rfidData}
+            {...commonProps}
+          />
+        );
       default:
         return null;
     }
   }, [
     activeTab, products, cart, addToCart, removeFromCart, updateQuantity,
-    rfidConnected, rfidData, handlePaymentComplete, api, loadingProducts, productsError,
-    addProduct, fetchProducts, storeInfo, setStoreInfo, user
+    rfidConnected, rfidData, clearRfidData, handlePaymentComplete, api, 
+    loadingProducts, productsError, addProduct, fetchProducts, storeInfo, 
+    setStoreInfo, user
   ]);
 
   return (
@@ -308,14 +341,18 @@ const Dashboard = ({ storeInfo, setStoreInfo, onLogout, user, api }) => {
 
       {productsError && (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          {/* ... (Error Display JSX) ... */}
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+            <p className="text-red-800">{productsError}</p>
+          </div>
         </div>
       )}
 
       {loadingProducts && products.length === 0 && (
-         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-            {/* ... (Loading State JSX) ... */}
-         </div>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="text-center">
+            <p className="text-slate-600">Memuat produk...</p>
+          </div>
+        </div>
       )}
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">

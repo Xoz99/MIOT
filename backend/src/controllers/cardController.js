@@ -1,9 +1,10 @@
 const { PrismaClient } = require("@prisma/client");
+const bcrypt = require('bcryptjs');
 const prisma = new PrismaClient();
 
 const registerCard = async (req, res) => {
   const { cardId, pin, balance } = req.body;
-  const merchantId = req.user.id; // Sekarang bisa pakai merchantId
+  const merchantId = req.user.id;
 
   console.log("=== REGISTER CARD DEBUG ===");
   console.log("Request body:", req.body);
@@ -71,20 +72,28 @@ const registerCard = async (req, res) => {
       });
     }
 
+    // HASH PIN SEBELUM DISIMPAN
+    console.log("Hashing PIN...");
+    const saltRounds = 10;
+    const hashedPin = await bcrypt.hash(String(pin), saltRounds);
+    console.log("PIN hashed successfully");
+
     console.log("Creating new card with data:");
     const createData = {
       cardId: cardIdString,
-      pin: String(pin),
+      pin: hashedPin,
       balance: balanceInt,
       merchantId: merchantId,
       isActive: true,
     };
-    console.log("Create data:", createData);
+    console.log("Create data (PIN hidden):", {
+      ...createData,
+      pin: "[HASHED]"
+    });
 
     // Buat kartu baru di database
     const newCard = await prisma.rfidCard.create({
       data: createData,
-      // Include merchant info in response
       include: {
         merchant: {
           select: {
@@ -96,7 +105,7 @@ const registerCard = async (req, res) => {
       },
     });
 
-    console.log("Card created successfully:", newCard);
+    console.log("Card created successfully with ID:", newCard.id);
 
     res.status(201).json({
       success: true,
@@ -184,7 +193,6 @@ const getMerchantCards = async (req, res) => {
         isActive: true,
         createdAt: true,
         updatedAt: true,
-        // Tidak include PIN untuk keamanan
       },
     });
 
@@ -212,7 +220,141 @@ const getMerchantCards = async (req, res) => {
   }
 };
 
+// ===== VERIFY PIN DAN AMBIL SALDO =====
+const verifyPinAndGetBalance = async (req, res) => {
+  const { cardId, pin } = req.body;
+
+  console.log("=== VERIFY PIN REQUEST ===");
+  console.log("Card ID:", cardId);
+  console.log("PIN length:", pin?.length);
+
+  // Validasi input
+  if (!cardId || !pin) {
+    return res.status(400).json({
+      success: false,
+      message: "Card ID dan PIN harus diisi."
+    });
+  }
+
+  if (pin.length !== 6 || !/^\d+$/.test(pin)) {
+    return res.status(400).json({
+      success: false,
+      message: "PIN harus terdiri dari 6 digit angka."
+    });
+  }
+
+  try {
+    // Cari kartu berdasarkan cardId
+    const card = await prisma.rfidCard.findUnique({
+      where: { cardId: String(cardId).trim() },
+      include: {
+        merchant: {
+          select: {
+            id: true,
+            storeName: true,
+            ownerName: true
+          }
+        }
+      }
+    });
+
+    // Cek apakah kartu ditemukan
+    if (!card) {
+      console.log("Card not found:", cardId);
+      return res.status(404).json({
+        success: false,
+        message: "Kartu tidak ditemukan."
+      });
+    }
+
+    // Cek apakah kartu aktif
+    if (!card.isActive) {
+      console.log("Card is inactive:", cardId);
+      return res.status(403).json({
+        success: false,
+        message: "Kartu tidak aktif. Hubungi admin."
+      });
+    }
+
+    // Verifikasi PIN menggunakan bcrypt
+    console.log("Verifying PIN for card:", cardId);
+    const isPinValid = await bcrypt.compare(String(pin), card.pin);
+
+    if (!isPinValid) {
+      console.log("Invalid PIN for card:", cardId);
+      return res.status(401).json({
+        success: false,
+        message: "PIN tidak valid."
+      });
+    }
+
+    // PIN valid, return data kartu dengan saldo
+    console.log("PIN verified successfully for card:", cardId);
+    
+    res.status(200).json({
+      success: true,
+      message: "PIN berhasil diverifikasi.",
+      data: {
+        id: card.id,
+        cardId: card.cardId,
+        balance: card.balance,
+        isActive: card.isActive,
+        merchantId: card.merchantId,
+        merchant: card.merchant,
+      }
+    });
+
+  } catch (error) {
+    console.error("=== PIN VERIFICATION ERROR ===");
+    console.error("Error message:", error.message);
+    console.error("Error stack:", error.stack);
+
+    res.status(500).json({
+      success: false,
+      message: process.env.NODE_ENV === 'development' 
+        ? `Server error: ${error.message}` 
+        : "Terjadi kesalahan pada server."
+    });
+  }
+};
+
+// TAMBAHAN: Endpoint untuk testing PIN (development only)
+const testPinVerification = async (req, res) => {
+  if (process.env.NODE_ENV !== 'development') {
+    return res.status(404).json({ message: 'Not found' });
+  }
+
+  const { cardId, pin } = req.body;
+
+  try {
+    const card = await prisma.rfidCard.findUnique({
+      where: { cardId }
+    });
+
+    if (!card) {
+      return res.json({ success: false, message: 'Card not found' });
+    }
+
+    const isValid = await bcrypt.compare(pin, card.pin);
+    
+    res.json({ 
+      success: true, 
+      message: 'PIN verification test completed',
+      data: {
+        cardId,
+        pinMatch: isValid,
+        cardActive: card.isActive
+      }
+    });
+
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 module.exports = {
   registerCard,
   getMerchantCards,
+  verifyPinAndGetBalance, // ⬅️ EKSPOR FUNCTION BARU
+  testPinVerification,
 };

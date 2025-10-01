@@ -1,78 +1,147 @@
 import React, { useState, useEffect } from 'react';
-
-// Asumsi komponen-komponen ini sudah ada
 import ProductGrid from '../components/pos/ProductGrid';
 import ShoppingCart from '../components/pos/ShoppingCart';
 import RFIDPayment from '../components/pos/RFIDPayment';
-
-// Impor Modal PIN Anda, pastikan path/nama file ini benar
-import PinVerificationModal from '../components/sensor/PinVerificationModal'; 
-
-// Asumsi Anda punya fungsi helper ini
+import PinVerificationModal from '../components/sensor/PinVerificationModal';
 import { formatRupiah } from '../utils/formatters';
 
-const POSPage = ({ 
-  products, 
-  cart, 
-  addToCart, 
-  removeFromCart, 
-  updateQuantity, 
-  rfidConnected, 
+const POSPage = ({
+  products,
+  cart,
+  addToCart,
+  removeFromCart,
+  updateQuantity,
+  rfidConnected,
   onPaymentComplete,
   api,
   loading,
-  // ▼ Props baru yang diterima dari Dashboard.js ▼
   rfidData,
   clearRfidData
 }) => {
-  // State untuk mengontrol kapan modal verifikasi PIN muncul
   const [isPinModalOpen, setPinModalOpen] = useState(false);
+  const [isWaitingForCard, setIsWaitingForCard] = useState(false);
+  const [capturedCardData, setCapturedCardData] = useState(null);
 
-  // useEffect ini akan "mengawasi" perubahan pada UID dari Arduino
+  // useEffect untuk deteksi kartu RFID - DIPERBAIKI
   useEffect(() => {
-    // Jika ada UID baru terdeteksi DAN keranjang belanja tidak kosong, buka modal PIN
-    if (rfidData.uid && cart.length > 0) {
+    console.log("📡 RFID State Check:", {
+      isWaitingForCard,
+      hasUID: !!rfidData.uid,
+      uid: rfidData.uid,
+      timestamp: rfidData.timestamp,
+      cartLength: cart.length
+    });
+
+    // Kondisi untuk membuka modal:
+    // 1. Sedang menunggu kartu
+    // 2. Ada UID baru dengan timestamp
+    // 3. Keranjang tidak kosong
+    if (isWaitingForCard && rfidData.uid && rfidData.timestamp && cart.length > 0) {
+      console.log("✅ Card detected! Opening PIN modal...");
+      
+      // Simpan data kartu yang terdeteksi
+      setCapturedCardData({
+        uid: rfidData.uid,
+        pin: rfidData.pin,
+        timestamp: rfidData.timestamp
+      });
+      
+      setIsWaitingForCard(false);
       setPinModalOpen(true);
     }
-  }, [rfidData.uid, cart.length]);
+  }, [rfidData.uid, rfidData.timestamp, isWaitingForCard, cart.length, rfidData.pin]);
 
-  // Fungsi ini akan dipanggil dari dalam modal saat PIN di-submit
-  const handleProcessPayment = async (pinFromInput) => {
-    // Prioritaskan PIN dari keypad hardware jika ada, jika tidak, gunakan dari input manual di modal
-    const finalPin = rfidData.pin || pinFromInput;
+  // Function dipanggil saat user KLIK tombol "Bayar dengan RFID"
+  const handleInitiatePayment = () => {
+    if (cart.length === 0) {
+      alert('Keranjang masih kosong!');
+      return;
+    }
 
+    if (!rfidConnected) {
+      alert('Hubungkan RFID Reader terlebih dahulu!');
+      return;
+    }
+
+    console.log("🔵 Initiating payment, waiting for card...");
+    
+    // PENTING: Clear data RFID lama dulu
+    clearRfidData();
+    
+    // Kemudian set waiting
+    setIsWaitingForCard(true);
+    alert('Silakan tempelkan kartu RFID pada reader...');
+  };
+
+  // Function untuk cancel waiting
+  const handleCancelWaiting = () => {
+    console.log("❌ Payment cancelled by user");
+    setIsWaitingForCard(false);
+    clearRfidData();
+  };
+
+  // Function dipanggil dari modal saat PIN di-submit
+  const handleProcessPayment = async (pinFromInput, verifiedCardData) => {
+    const finalPin = capturedCardData?.pin || pinFromInput;
+    
     if (!finalPin) {
       alert("PIN harus diisi!");
       return;
     }
 
+    const totalAmount = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+
+    if (verifiedCardData && verifiedCardData.balance < totalAmount) {
+      alert(`Saldo tidak mencukupi!\nSaldo: ${formatRupiah(verifiedCardData.balance)}\nTotal: ${formatRupiah(totalAmount)}`);
+      return;
+    }
+
     try {
-      console.log(`Mengirim transaksi: Kartu=${rfidData.uid}, PIN=${finalPin}`);
-      
+      console.log('💳 Processing payment:', {
+        cardId: capturedCardData.uid,
+        amount: totalAmount,
+        items: cart.length
+      });
+
       const response = await api.post('/rfid/payment', {
-        cardId: rfidData.uid,
+        cardId: capturedCardData.uid,
         pin: finalPin,
-        items: cart.map(item => ({ productId: item.id, quantity: item.quantity }))
+        amount: totalAmount,
+        items: cart.map(item => ({
+          productId: item.id,
+          quantity: item.quantity,
+          price: item.price,
+          name: item.name
+        }))
       });
 
       if (response.data.success) {
-        alert('Pembayaran Berhasil!');
-        onPaymentComplete(); // Panggil fungsi dari Dashboard untuk clear cart & refresh
+        console.log("✅ Payment successful!");
+        alert(`Pembayaran Berhasil!\n\nSaldo Lama: ${formatRupiah(response.data.data.oldBalance)}\nSaldo Baru: ${formatRupiah(response.data.data.newBalance)}`);
+        onPaymentComplete();
       }
     } catch (error) {
-      // Tampilkan error dari backend
+      console.error('❌ Payment error:', error.response?.data);
       alert(error.response?.data?.message || 'Transaksi Gagal!');
     } finally {
-      setPinModalOpen(false); // Selalu tutup modal setelah submit
-      clearRfidData();      // Reset data RFID di Dashboard untuk transaksi berikutnya
+      setPinModalOpen(false);
+      setCapturedCardData(null);
+      clearRfidData();
     }
+  };
+
+  const handleCloseModal = () => {
+    console.log("🚪 Closing PIN modal");
+    setPinModalOpen(false);
+    setCapturedCardData(null);
+    clearRfidData();
   };
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
       {/* Kolom Kiri: Daftar Produk */}
       <div className="lg:col-span-2">
-        <ProductGrid 
+        <ProductGrid
           products={products}
           addToCart={addToCart}
           formatRupiah={formatRupiah}
@@ -93,20 +162,20 @@ const POSPage = ({
           cart={cart}
           formatRupiah={formatRupiah}
           rfidConnected={rfidConnected}
-          // Logika pembayaran utama sekarang ditangani oleh modal
+          onPaymentComplete={handleInitiatePayment}
+          isWaitingForCard={isWaitingForCard}
+          onCancelWaiting={handleCancelWaiting}
         />
       </div>
 
-      {/* Modal PIN yang Muncul di Atas Segalanya */}
-      {isPinModalOpen && (
-        <PinVerificationModal 
-          cardId={rfidData.uid}
-          pinFromKeypad={rfidData.pin}
+      {/* Modal PIN - GUNAKAN KEY UNTUK FORCE RE-RENDER */}
+      {isPinModalOpen && capturedCardData && (
+        <PinVerificationModal
+          key={capturedCardData.timestamp} // PENTING: Force new instance
+          cardId={capturedCardData.uid}
+          pinFromKeypad={capturedCardData.pin}
           totalAmount={cart.reduce((sum, item) => sum + item.price * item.quantity, 0)}
-          onClose={() => {
-            setPinModalOpen(false);
-            clearRfidData(); // Batalkan transaksi jika modal ditutup
-          }}
+          onClose={handleCloseModal}
           onSubmit={handleProcessPayment}
           formatRupiah={formatRupiah}
         />

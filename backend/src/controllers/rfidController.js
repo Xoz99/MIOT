@@ -1,11 +1,10 @@
-// backend/src/controllers/rfidController.js
 const prisma = require('../config/database');
 const bcrypt = require('bcryptjs');
 
 const verifyCard = async (req, res) => {
   try {
     const { cardId, pin } = req.body;
-
+    
     if (!cardId || !pin) {
       return res.status(400).json({
         success: false,
@@ -27,6 +26,7 @@ const verifyCard = async (req, res) => {
     }
 
     const isPinValid = await bcrypt.compare(pin, card.pin);
+    
     if (!isPinValid) {
       return res.status(401).json({
         success: false,
@@ -44,7 +44,6 @@ const verifyCard = async (req, res) => {
         phone: card.phone
       }
     });
-
   } catch (error) {
     console.error('Verify card error:', error);
     res.status(500).json({
@@ -56,26 +55,28 @@ const verifyCard = async (req, res) => {
 
 const processPayment = async (req, res) => {
   try {
-    const { cardId, pin, amount } = req.body;
+    const { cardId, pin, amount, items, totalAmount } = req.body;
+    
+    const paymentAmount = amount || totalAmount;
 
-    if (!cardId || !pin || !amount) {
+    if (!cardId || !pin || !paymentAmount) {
       return res.status(400).json({
         success: false,
         message: 'cardId, pin, dan amount harus diisi'
       });
     }
 
-    if (amount <= 0) {
+    if (paymentAmount <= 0) {
       return res.status(400).json({
         success: false,
         message: 'Amount harus lebih dari 0'
       });
     }
 
-    console.log(`Processing payment: ${cardId}, amount: ${amount}`);
+    console.log(`Processing payment: ${cardId}, amount: ${paymentAmount}, items:`, items);
 
     const result = await prisma.$transaction(async (tx) => {
-      // Verify card
+      // 1. Verify card
       const card = await tx.rfidCard.findUnique({
         where: { cardId }
       });
@@ -89,29 +90,57 @@ const processPayment = async (req, res) => {
         throw new Error('PIN salah');
       }
 
-      if (card.balance < amount) {
+      if (card.balance < paymentAmount) {
         throw new Error('Saldo tidak cukup');
       }
 
-      // Update card balance directly (tanpa create transaction record untuk sementara)
+      // 2. Validasi dan update stock produk
+      if (items && items.length > 0) {
+        for (const item of items) {
+          const product = await tx.product.findUnique({
+            where: { id: item.productId }
+          });
+
+          if (!product) {
+            throw new Error(`Produk dengan ID ${item.productId} tidak ditemukan`);
+          }
+
+          if (product.stock < item.quantity) {
+            throw new Error(`Stock ${product.name} tidak mencukupi. Stock tersedia: ${product.stock}`);
+          }
+
+          // Kurangi stock
+          await tx.product.update({
+            where: { id: item.productId },
+            data: {
+              stock: { decrement: item.quantity }
+            }
+          });
+
+          console.log(`Stock updated: ${product.name} -${item.quantity}`);
+        }
+      }
+
+      // 3. Update card balance
       const updatedCard = await tx.rfidCard.update({
         where: { cardId },
         data: {
-          balance: { decrement: parseInt(amount) }
+          balance: { decrement: parseInt(paymentAmount) }
         }
       });
 
       return {
         cardId,
-        amount: parseInt(amount),
+        amount: parseInt(paymentAmount),
         oldBalance: card.balance,
         newBalance: updatedCard.balance,
+        items: items || [],
         timestamp: new Date().toISOString()
       };
     });
 
     console.log(`Payment successful: ${result.cardId}`);
-
+    
     res.json({
       success: true,
       message: 'Pembayaran berhasil',
