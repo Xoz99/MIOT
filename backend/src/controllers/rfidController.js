@@ -59,6 +59,13 @@ const processPayment = async (req, res) => {
     
     const paymentAmount = amount || totalAmount;
 
+    console.log('=== PAYMENT REQUEST ===');
+    console.log('Raw cardId:', cardId);
+    console.log('Type:', typeof cardId);
+    console.log('Length:', cardId?.length);
+    console.log('Pin length:', pin?.length);
+    console.log('Amount:', paymentAmount);
+
     if (!cardId || !pin || !paymentAmount) {
       return res.status(400).json({
         success: false,
@@ -73,19 +80,35 @@ const processPayment = async (req, res) => {
       });
     }
 
-    console.log(`Processing payment: ${cardId}, amount: ${paymentAmount}, items:`, items);
-
     const result = await prisma.$transaction(async (tx) => {
-      // 1. Verify card
-      const card = await tx.rfidCard.findUnique({
-        where: { cardId }
+      // Debug: Cari semua kartu untuk comparison
+      console.log('=== SEARCHING CARD ===');
+      const allCards = await tx.rfidCard.findMany({
+        select: { cardId: true, isActive: true }
       });
+      console.log('All cards in DB:', allCards);
+      console.log('Looking for:', cardId);
+
+      // Cari kartu
+      const card = await tx.rfidCard.findUnique({
+        where: { cardId: String(cardId).trim() }
+      });
+
+      console.log('=== CARD LOOKUP RESULT ===');
+      console.log('Found:', !!card);
+      if (card) {
+        console.log('Card ID:', card.cardId);
+        console.log('Is Active:', card.isActive);
+        console.log('Balance:', card.balance);
+      }
 
       if (!card || !card.isActive) {
         throw new Error('Kartu tidak valid atau tidak aktif');
       }
 
       const isPinValid = await bcrypt.compare(pin, card.pin);
+      console.log('PIN Valid:', isPinValid);
+      
       if (!isPinValid) {
         throw new Error('PIN salah');
       }
@@ -94,7 +117,7 @@ const processPayment = async (req, res) => {
         throw new Error('Saldo tidak cukup');
       }
 
-      // 2. Validasi dan update stock produk
+      // Update stock produk
       if (items && items.length > 0) {
         for (const item of items) {
           const product = await tx.product.findUnique({
@@ -106,27 +129,20 @@ const processPayment = async (req, res) => {
           }
 
           if (product.stock < item.quantity) {
-            throw new Error(`Stock ${product.name} tidak mencukupi. Stock tersedia: ${product.stock}`);
+            throw new Error(`Stock ${product.name} tidak mencukupi`);
           }
 
-          // Kurangi stock
           await tx.product.update({
             where: { id: item.productId },
-            data: {
-              stock: { decrement: item.quantity }
-            }
+            data: { stock: { decrement: item.quantity } }
           });
-
-          console.log(`Stock updated: ${product.name} -${item.quantity}`);
         }
       }
 
-      // 3. Update card balance
+      // Update saldo
       const updatedCard = await tx.rfidCard.update({
-        where: { cardId },
-        data: {
-          balance: { decrement: parseInt(paymentAmount) }
-        }
+        where: { cardId: String(cardId).trim() },
+        data: { balance: { decrement: parseInt(paymentAmount) } }
       });
 
       return {
@@ -139,7 +155,7 @@ const processPayment = async (req, res) => {
       };
     });
 
-    console.log(`Payment successful: ${result.cardId}`);
+    console.log('Payment successful');
     
     res.json({
       success: true,
@@ -148,7 +164,8 @@ const processPayment = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Payment error:', error);
+    console.error('=== PAYMENT ERROR ===');
+    console.error(error);
     res.status(400).json({
       success: false,
       message: error.message || 'Gagal memproses pembayaran'

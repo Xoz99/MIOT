@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Check, X, Printer, Share, CreditCard } from 'lucide-react';
+import { Check, X, Printer, Share, CreditCard, TrendingDown, TrendingUp } from 'lucide-react';
 
 const PaymentSuccessPopup = ({ 
   isOpen, 
@@ -36,12 +36,10 @@ const PaymentSuccessPopup = ({
   };
 
   const handlePrint = () => {
-    // Simulate print functionality
     alert('Fitur cetak receipt akan segera tersedia!');
   };
 
   const handleShare = () => {
-    // Simulate share functionality
     if (navigator.share) {
       navigator.share({
         title: 'Payment Receipt',
@@ -53,7 +51,7 @@ const PaymentSuccessPopup = ({
     }
   };
 
-  if (!isOpen) return null;
+  if (!isOpen || !paymentData) return null;
 
   return (
     <div className={`fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center p-4 z-50 transition-all duration-300 ${
@@ -90,34 +88,50 @@ const PaymentSuccessPopup = ({
             {/* Amount */}
             <div className="text-center border-b border-slate-200 pb-4">
               <p className="text-slate-600 text-sm mb-1">Total Pembayaran</p>
-              <p className="text-3xl font-bold text-slate-800">{formatRupiah(paymentData?.amount)}</p>
+              <p className="text-3xl font-bold text-emerald-600">{formatRupiah(paymentData.amount)}</p>
+            </div>
+
+            {/* Balance Changes */}
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <div className="p-3 bg-red-50 rounded-xl border border-red-200">
+                <div className="flex items-center gap-1 mb-1">
+                  <TrendingDown className="text-red-500" size={14} />
+                  <p className="text-xs text-red-600 font-medium">Saldo Lama</p>
+                </div>
+                <p className="text-sm font-bold text-red-600">
+                  {formatRupiah(paymentData.oldBalance)}
+                </p>
+              </div>
+
+              <div className="p-3 bg-blue-50 rounded-xl border border-blue-200">
+                <div className="flex items-center gap-1 mb-1">
+                  <TrendingUp className="text-blue-500" size={14} />
+                  <p className="text-xs text-blue-600 font-medium">Saldo Baru</p>
+                </div>
+                <p className="text-sm font-bold text-blue-600">
+                  {formatRupiah(paymentData.newBalance)}
+                </p>
+              </div>
             </div>
 
             {/* Transaction Details */}
             <div className="space-y-3">
               <div className="flex justify-between items-center">
-                <span className="text-slate-600 font-medium">Card ID:</span>
-                <span className="font-mono font-semibold text-slate-800 bg-slate-200 px-2 py-1 rounded">
-                  {paymentData?.cardId}
+                <span className="text-slate-600 font-medium text-sm">Card ID:</span>
+                <span className="font-mono font-semibold text-slate-800 bg-slate-200 px-2 py-1 rounded text-sm">
+                  {paymentData.cardId}
                 </span>
               </div>
               
               <div className="flex justify-between items-center">
-                <span className="text-slate-600 font-medium">PIN:</span>
-                <span className="font-mono font-semibold text-slate-800">
-                  {paymentData?.pin}
-                </span>
-              </div>
-              
-              <div className="flex justify-between items-center">
-                <span className="text-slate-600 font-medium">Waktu:</span>
-                <span className="font-semibold text-slate-800">
-                  {paymentData?.timestamp}
+                <span className="text-slate-600 font-medium text-sm">Waktu:</span>
+                <span className="font-semibold text-slate-800 text-sm">
+                  {new Date(paymentData.timestamp).toLocaleTimeString('id-ID')}
                 </span>
               </div>
 
               <div className="flex justify-between items-center">
-                <span className="text-slate-600 font-medium">Metode:</span>
+                <span className="text-slate-600 font-medium text-sm">Metode:</span>
                 <span className="inline-flex items-center gap-2 px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium">
                   <CreditCard size={14} />
                   RFID Card
