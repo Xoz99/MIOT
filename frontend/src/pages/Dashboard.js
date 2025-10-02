@@ -5,35 +5,30 @@ import POSPage from './POSPage';
 import ProductsPage from './ProductPage';
 import SettingsPage from './SettingsPage';
 import Pemasukan from './Pemasukan';
+import TopUpPage from './TopUpPage'; 
 import OwnerPinProtection from '../components/auth/OwnerPinProtection';
+import { formatRupiah } from '../utils/formatters'; 
 
 const Dashboard = ({ storeInfo, setStoreInfo, onLogout, user, api }) => {
-  // State untuk UI utama
   const [activeTab, setActiveTab] = useState('pos');
   const [rfidConnected, setRfidConnected] = useState(false);
-  
-  // State untuk proteksi PIN
   const [showOwnerPin, setShowOwnerPin] = useState(false);
   const [ownerAuthenticated, setOwnerAuthenticated] = useState(false);
-
-  // State untuk Web Serial API
   const [serialPort, setSerialPort] = useState(null);
-  const [rfidData, setRfidData] = useState({ uid: null, pin: null, timestamp: null });
-  
-  // State untuk produk & data
+  const [rfidData, setRfidData] = useState({ 
+    uid: null, 
+    pin: null, 
+    timestamp: null,
+    scanCount: null // TAMBAHAN UNTUK FORCE UNIQUE
+  });
   const [products, setProducts] = useState([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [productsError, setProductsError] = useState('');
-
-  // State untuk keranjang belanja
   const [cart, setCart] = useState([]);
-
-  // Refs untuk manajemen side-effect
   const fetchingRef = useRef(false);
   const mountedRef = useRef(true);
 
-  // --- LOGIKA WEB SERIAL API ---
-
+  // PROCESS ARDUINO DATA - IMPROVED
   const processArduinoData = useCallback((data) => {
     const trimmedData = data.trim();
     console.log("Data Diterima dari Arduino:", trimmedData);
@@ -42,11 +37,11 @@ const Dashboard = ({ storeInfo, setStoreInfo, onLogout, user, api }) => {
       const uid = trimmedData.split(":")[1];
       console.log("New UID detected:", uid);
       
-      // Set dengan timestamp untuk memaksa re-render
       setRfidData({ 
         uid: uid, 
         pin: null,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        scanCount: Math.random() // FORCE UNIQUE SETIAP SCAN
       });
     } else if (trimmedData.startsWith("PIN:")) {
       const pin = trimmedData.split(":")[1];
@@ -70,7 +65,6 @@ const Dashboard = ({ storeInfo, setStoreInfo, onLogout, user, api }) => {
     }
   }, [serialPort]);
 
-  // useEffect untuk mengelola seluruh siklus hidup koneksi serial
   useEffect(() => {
     if (!serialPort) {
       setRfidConnected(false);
@@ -88,9 +82,8 @@ const Dashboard = ({ storeInfo, setStoreInfo, onLogout, user, api }) => {
 
         while (serialPort.readable && keepReading) {
           const { value, done } = await reader.read();
-          if (done) {
-            break;
-          }
+          if (done) break;
+          
           const lines = value.split('\n');
           lines.forEach(line => {
             if (line.trim()) processArduinoData(line);
@@ -129,13 +122,15 @@ const Dashboard = ({ storeInfo, setStoreInfo, onLogout, user, api }) => {
     }
   }, []);
   
-  // Clear RFID Data - PERBAIKAN
   const clearRfidData = useCallback(() => {
     console.log("Clearing RFID data...");
-    setRfidData({ uid: null, pin: null, timestamp: null });
+    setRfidData({ 
+      uid: null, 
+      pin: null, 
+      timestamp: null,
+      scanCount: null 
+    });
   }, []);
-
-  // --- FUNGSI-FUNGSI APLIKASI LAINNYA ---
 
   const fetchProducts = useCallback(async () => {
     if (fetchingRef.current || !api || !user) return;
@@ -291,6 +286,16 @@ const Dashboard = ({ storeInfo, setStoreInfo, onLogout, user, api }) => {
             clearRfidData={clearRfidData}
             onPaymentComplete={handlePaymentComplete}
             {...commonProps}
+          />
+        );
+      case 'topup': // CASE BARU UNTUK TOP-UP
+        return (
+          <TopUpPage
+            api={api}
+            formatRupiah={formatRupiah}
+            rfidData={rfidData}
+            clearRfidData={clearRfidData}
+            rfidConnected={rfidConnected}
           />
         );
       case 'products':
