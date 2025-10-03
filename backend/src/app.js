@@ -1,28 +1,33 @@
-// Lokasi: backend/src/app.js
-
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 
-// --- BAGIAN IMPORT YANG SUDAH DIRAPIKAN ---
+// --- IMPORT ROUTES ---
 const authRoutes = require('./routes/auth.routes');
 const merchantRoutes = require('./routes/merchant.routes');
 const productRoutes = require('./routes/product.routes');
 const transactionRoutes = require('./routes/transaction.routes');
 const rfidRoutes = require('./routes/rfid.routes');
-const cardRoutes = require('./routes/card.routes'); // <-- INI YANG PENTING
+const cardRoutes = require('./routes/card.Routes');
+const adminRoutes = require('./routes/admin.routes');
+const adminAuthRoutes = require('./routes/adminAuth.routes');
 const errorHandler = require('./middleware/errorHandler');
-// -----------------------------------------
+const publicRoutes = require('./routes/public.routes');
 
 const app = express();
 
 // Security middleware
 app.use(helmet());
+
+
+// CORS HARUS DI ATAS SEMUA ROUTES
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:3000',
-  credentials: true
+  origin: ['http://localhost:3000', 'http://192.168.1.44:3000'],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
 // Rate limiting
@@ -48,13 +53,16 @@ app.get('/health', (req, res) => {
   });
 });
 
-// API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/merchant', merchantRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/transactions', transactionRoutes);
 app.use('/api/rfid', rfidRoutes);
-app.use('/api/cards', cardRoutes); // <-- DAN INI YANG PENTING
+app.use('/api/cards', cardRoutes);
+app.use('/api/admin/auth', adminAuthRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/public', publicRoutes);
+
 
 // 404 handler
 app.use('*', (req, res) => {

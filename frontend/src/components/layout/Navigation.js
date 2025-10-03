@@ -1,20 +1,29 @@
 import React from 'react';
-import { ShoppingCart, Package, TrendingUp, Settings, Wallet } from 'lucide-react';
+import { ShoppingCart, Package, TrendingUp, Settings, Wallet, Shield } from 'lucide-react';
 
-const Navigation = ({ activeTab, setActiveTab }) => {
+const Navigation = ({ activeTab, setActiveTab, userRole }) => {
+  console.log('🔍 Navigation userRole:', userRole); // DEBUG
+
   const tabs = [
-    { id: 'pos', label: 'Point of Sale', icon: ShoppingCart },
-    { id: 'topup', label: 'Top-Up', icon: Wallet },
-    { id: 'products', label: 'Kelola Produk', icon: Package },
-    { id: 'pemasukan', label: 'Pemasukan', icon: TrendingUp },
-    { id: 'settings', label: 'Pengaturan', icon: Settings }
+    { id: 'pos', label: 'Point of Sale', icon: ShoppingCart, roles: ['merchant', 'admin'] },
+    { id: 'topup', label: 'Top-Up', icon: Wallet, roles: ['merchant', 'admin'] },
+    { id: 'products', label: 'Kelola Produk', icon: Package, roles: ['merchant'] },
+    { id: 'admin', label: 'Admin Panel', icon: Shield, roles: ['admin'] },
+    { id: 'pemasukan', label: 'Pemasukan', icon: TrendingUp, roles: ['merchant'] },
+    { id: 'settings', label: 'Pengaturan', icon: Settings, roles: ['merchant', 'admin'] }
   ];
+
+  const visibleTabs = tabs.filter(tab => 
+    tab.roles.includes(userRole || 'merchant')
+  );
+
+  console.log('👁️ Visible tabs:', visibleTabs.map(t => t.label)); // DEBUG
 
   return (
     <nav className="bg-white shadow-md border-b border-slate-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex space-x-1 overflow-x-auto">
-          {tabs.map((tab) => {
+          {visibleTabs.map((tab) => {
             const Icon = tab.icon;
             return (
               <button

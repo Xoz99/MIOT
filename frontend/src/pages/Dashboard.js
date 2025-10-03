@@ -5,9 +5,10 @@ import POSPage from './POSPage';
 import ProductsPage from './ProductPage';
 import SettingsPage from './SettingsPage';
 import Pemasukan from './Pemasukan';
-import TopUpPage from './TopUpPage'; 
+import TopUpPage from './TopUpPage';
+import AdminPage from './AdminPage';
 import OwnerPinProtection from '../components/auth/OwnerPinProtection';
-import { formatRupiah } from '../utils/formatters'; 
+import { formatRupiah } from '../utils/formatters';
 
 const Dashboard = ({ storeInfo, setStoreInfo, onLogout, user, api }) => {
   const [activeTab, setActiveTab] = useState('pos');
@@ -19,7 +20,7 @@ const Dashboard = ({ storeInfo, setStoreInfo, onLogout, user, api }) => {
     uid: null, 
     pin: null, 
     timestamp: null,
-    scanCount: null // TAMBAHAN UNTUK FORCE UNIQUE
+    scanCount: null
   });
   const [products, setProducts] = useState([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
@@ -28,7 +29,6 @@ const Dashboard = ({ storeInfo, setStoreInfo, onLogout, user, api }) => {
   const fetchingRef = useRef(false);
   const mountedRef = useRef(true);
 
-  // PROCESS ARDUINO DATA - IMPROVED
   const processArduinoData = useCallback((data) => {
     const trimmedData = data.trim();
     console.log("Data Diterima dari Arduino:", trimmedData);
@@ -41,7 +41,7 @@ const Dashboard = ({ storeInfo, setStoreInfo, onLogout, user, api }) => {
         uid: uid, 
         pin: null,
         timestamp: Date.now(),
-        scanCount: Math.random() // FORCE UNIQUE SETIAP SCAN
+        scanCount: Math.random()
       });
     } else if (trimmedData.startsWith("PIN:")) {
       const pin = trimmedData.split(":")[1];
@@ -288,7 +288,7 @@ const Dashboard = ({ storeInfo, setStoreInfo, onLogout, user, api }) => {
             {...commonProps}
           />
         );
-      case 'topup': // CASE BARU UNTUK TOP-UP
+      case 'topup':
         return (
           <TopUpPage
             api={api}
@@ -296,6 +296,13 @@ const Dashboard = ({ storeInfo, setStoreInfo, onLogout, user, api }) => {
             rfidData={rfidData}
             clearRfidData={clearRfidData}
             rfidConnected={rfidConnected}
+          />
+        );
+      case 'admin':
+        return (
+          <AdminPage
+            api={api}
+            formatRupiah={formatRupiah}
           />
         );
       case 'products':
@@ -342,6 +349,7 @@ const Dashboard = ({ storeInfo, setStoreInfo, onLogout, user, api }) => {
       <Navigation 
         activeTab={activeTab}
         setActiveTab={handleTabChange}
+        userRole={user?.role}
       />
 
       {productsError && (

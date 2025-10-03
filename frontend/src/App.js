@@ -3,12 +3,12 @@ import axios from 'axios';
 import LoginForm from './components/auth/LoginForm';
 import RegisterForm from './components/auth/RegisterForm';
 import Dashboard from './pages/Dashboard';
+import AdminLoginPage from './pages/AdminLoginPage';
+import AdminDashboard from './pages/AdminDashboard';
 import './index.css';
 
-// Backend API configuration
 const API_BASE_URL = 'http://192.168.1.44:3001/api';
 
-// Create axios instance
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
@@ -16,9 +16,13 @@ const api = axios.create({
   }
 });
 
-// Add token to requests
+// FIXED INTERCEPTOR - Pilih token berdasarkan route
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('authToken');
+  const isAdminRoute = config.url?.includes('/admin');
+  const token = isAdminRoute 
+    ? localStorage.getItem('adminToken')
+    : localStorage.getItem('authToken');
+  
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -28,20 +32,26 @@ api.interceptors.request.use((config) => {
 const App = () => {
   const [currentView, setCurrentView] = useState('login');
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
   const [user, setUser] = useState(null);
-  
   const [storeInfo, setStoreInfo] = useState({
     name: 'Loading...',
     owner: 'Loading...',
     address: 'Loading...'
   });
 
-  // Check for existing token on app load
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [adminUser, setAdminUser] = useState(null);
+
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
   useEffect(() => {
-    const token = localStorage.getItem('authToken');
-    if (token) {
+    const merchantToken = localStorage.getItem('authToken');
+    const adminToken = localStorage.getItem('adminToken');
+
+    if (window.location.pathname === '/admin' && adminToken) {
+      fetchAdminProfile();
+    } else if (merchantToken) {
       fetchProfile();
     }
   }, []);
@@ -51,6 +61,7 @@ const App = () => {
       const response = await api.get('/auth/profile');
       if (response.data.success) {
         const userData = response.data.data;
+        
         setUser(userData);
         setStoreInfo({
           name: userData.storeName,
@@ -63,6 +74,26 @@ const App = () => {
     } catch (error) {
       console.error('Profile fetch error:', error);
       localStorage.removeItem('authToken');
+    }
+  };
+
+  const fetchAdminProfile = async () => {
+    try {
+      const response = await api.get('/auth/profile');
+      if (response.data.success) {
+        const userData = response.data.data;
+        
+        if (userData.role === 'admin') {
+          setAdminUser(userData);
+          setIsAdmin(true);
+        } else {
+          localStorage.removeItem('adminToken');
+          setError('Akses ditolak');
+        }
+      }
+    } catch (error) {
+      console.error('Admin profile fetch error:', error);
+      localStorage.removeItem('adminToken');
     }
   };
 
@@ -84,16 +115,24 @@ const App = () => {
       if (response.data.success) {
         const { token, merchant } = response.data.data;
         
-        // Save token to localStorage
+        // Clear admin token jika ada
+        localStorage.removeItem('adminToken');
         localStorage.setItem('authToken', token);
         
-        // Update states
-        setUser(merchant);
+        setUser({
+          id: merchant.id,
+          email: merchant.email,
+          storeName: merchant.storeName,
+          ownerName: merchant.ownerName,
+          role: merchant.role || 'merchant'
+        });
+        
         setStoreInfo({
           name: merchant.storeName,
           owner: merchant.ownerName,
           address: merchant.address || 'Alamat belum diset'
         });
+        
         setIsLoggedIn(true);
         setCurrentView('dashboard');
         setError('');
@@ -101,6 +140,40 @@ const App = () => {
     } catch (error) {
       console.error('Login error:', error);
       setError(error.response?.data?.message || 'Login gagal. Periksa email dan password.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAdminLogin = async (formData) => {
+    if (!formData.email || !formData.password) {
+      setError('Harap isi email dan password!');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
+    try {
+      const response = await api.post('/admin/auth/login', {
+        email: formData.email,
+        password: formData.password
+      });
+
+      if (response.data.success) {
+        const { token, admin } = response.data.data;
+        
+        // Clear merchant token jika ada
+        localStorage.removeItem('authToken');
+        localStorage.setItem('adminToken', token);
+        
+        setAdminUser(admin);
+        setIsAdmin(true);
+        setError('');
+      }
+    } catch (error) {
+      console.error('Admin login error:', error);
+      setError(error.response?.data?.message || 'Login admin gagal');
     } finally {
       setLoading(false);
     }
@@ -128,16 +201,23 @@ const App = () => {
       if (response.data.success) {
         const { token, merchant } = response.data.data;
         
-        // Save token to localStorage
+        localStorage.removeItem('adminToken');
         localStorage.setItem('authToken', token);
         
-        // Update states
-        setUser(merchant);
+        setUser({
+          id: merchant.id,
+          email: merchant.email,
+          storeName: merchant.storeName,
+          ownerName: merchant.ownerName,
+          role: merchant.role || 'merchant'
+        });
+        
         setStoreInfo({
           name: merchant.storeName,
           owner: merchant.ownerName,
           address: formData.address || 'Alamat belum diset'
         });
+        
         setIsLoggedIn(true);
         setCurrentView('dashboard');
         setError('');
@@ -151,14 +231,12 @@ const App = () => {
   };
 
   const handleLogout = () => {
-    // Clear token and user data
     localStorage.removeItem('authToken');
     setUser(null);
     setIsLoggedIn(false);
     setCurrentView('login');
     setError('');
     
-    // Reset store info
     setStoreInfo({
       name: 'Warung Modern',
       owner: 'Pemilik Toko',
@@ -166,6 +244,35 @@ const App = () => {
     });
   };
 
+  const handleAdminLogout = () => {
+    localStorage.removeItem('adminToken');
+    setAdminUser(null);
+    setIsAdmin(false);
+    setError('');
+  };
+
+  // ADMIN ROUTE
+  if (window.location.pathname === '/admin') {
+    if (isAdmin && adminUser) {
+      return (
+        <AdminDashboard
+          admin={adminUser}
+          api={api}
+          onLogout={handleAdminLogout}
+        />
+      );
+    }
+
+    return (
+      <AdminLoginPage
+        onAdminLogin={handleAdminLogin}
+        loading={loading}
+        error={error}
+      />
+    );
+  }
+
+  // MERCHANT ROUTES
   if (currentView === 'login') {
     return (
       <LoginForm
@@ -184,6 +291,7 @@ const App = () => {
         onSwitchToLogin={() => setCurrentView('login')}
         loading={loading}
         error={error}
+        api={api}
       />
     );
   }
