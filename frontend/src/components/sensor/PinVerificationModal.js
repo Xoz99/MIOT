@@ -1,42 +1,33 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, Eye, EyeOff, Loader, AlertCircle, CheckCircle, Wifi } from 'lucide-react';
+import { ShieldCheck, Eye, EyeOff, Loader, AlertCircle, CheckCircle } from 'lucide-react';
 
 const PinVerificationModal = ({ 
   cardId, 
-  pinFromKeypad, // PIN dari hardware keypad (optional)
+  pinFromKeypad,
   totalAmount,
   onClose, 
-  onSubmit, // Callback untuk submit PIN
+  onSubmit,
   formatRupiah,
-  loading = false // Props untuk loading state
+  loading = false
 }) => {
   const [pin, setPin] = useState(['', '', '', '', '', '']);
   const [showPin, setShowPin] = useState(false);
   const [error, setError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
-  // ===== TAMBAHAN UNTUK MEMBACA SALDO RFID =====
   const [cardBalance, setCardBalance] = useState(null);
   const [isVerifyingPin, setIsVerifyingPin] = useState(false);
   const [cardInfo, setCardInfo] = useState(null);
   const [balanceChecked, setBalanceChecked] = useState(false);
 
-  // API Configuration
-  const API_BASE_URL = 'http://localhost:3001/api';
+  const API_BASE_URL = 'http://192.168.1.44:3001/api';
 
-  // useEffect untuk handle PIN dari hardware keypad
   useEffect(() => {
-    if (pinFromKeypad && pinFromKeypad.length >= 4) {
-      console.log('PIN from keypad received:', pinFromKeypad);
-      
-      // Pastikan PIN maksimal 6 digit
+    if (pinFromKeypad && pinFromKeypad.length >= 1) {
       const cleanPin = pinFromKeypad.slice(0, 6);
       const pinArray = cleanPin.split('').concat(Array(6 - cleanPin.length).fill(''));
       setPin(pinArray);
       
-      // Auto submit jika PIN sudah 6 digit
       if (cleanPin.length === 6) {
-        console.log('Auto-submitting 6-digit PIN from keypad');
         setTimeout(() => {
           handleSubmit(cleanPin);
         }, 300);
@@ -44,7 +35,6 @@ const PinVerificationModal = ({
     }
   }, [pinFromKeypad]);
 
-  // ===== FUNGSI BARU: VERIFY PIN DAN AMBIL SALDO =====
   const verifyPinAndGetBalance = async (pinValue) => {
     if (!cardId) {
       throw new Error('Card ID tidak tersedia');
@@ -52,7 +42,6 @@ const PinVerificationModal = ({
 
     try {
       setIsVerifyingPin(true);
-      console.log('Verifying PIN for card:', cardId);
 
       const response = await fetch(`${API_BASE_URL}/cards/verify-pin`, {
         method: 'POST',
@@ -66,22 +55,18 @@ const PinVerificationModal = ({
       });
 
       const data = await response.json();
-      console.log('PIN verification response:', data);
 
       if (!response.ok) {
         throw new Error(data.message || 'PIN tidak valid');
       }
 
-      // Set card info dan balance
       setCardInfo(data.data);
       setCardBalance(data.data.balance);
       setBalanceChecked(true);
 
-      console.log('PIN verified successfully, balance:', data.data.balance);
       return data.data;
 
     } catch (error) {
-      console.error('PIN verification error:', error);
       setCardBalance(null);
       setCardInfo(null);
       setBalanceChecked(false);
@@ -91,39 +76,15 @@ const PinVerificationModal = ({
     }
   };
 
-  // ===== FUNGSI BARU: CEK BALANCE SAJA (TANPA VERIFY PIN) =====
-  const checkCardBalance = async () => {
-    if (!cardId) return;
-
-    try {
-      // Ini bisa digunakan jika ada endpoint untuk check balance tanpa PIN
-      // Atau jika RFID hardware bisa langsung baca balance
-      console.log('Checking balance for card:', cardId);
-      
-      // Placeholder - implementasi tergantung hardware/backend
-      // const response = await fetch(`${API_BASE_URL}/cards/info/${cardId}`);
-      // const data = await response.json();
-      // if (response.ok) {
-      //   setCardInfo(data.data);
-      // }
-      
-    } catch (error) {
-      console.error('Error checking card balance:', error);
-    }
-  };
-
-  // Handle input manual dari keyboard
   const handleManualPinChange = (e, index) => {
     const { value } = e.target;
     
-    // Hanya terima angka 0-9 atau empty string
     if (/^[0-9]$/.test(value) || value === '') {
       const newPin = [...pin];
       newPin[index] = value;
       setPin(newPin);
-      setError(null); // Clear error saat user mulai input
+      setError(null);
 
-      // Auto focus ke input berikutnya
       if (value && index < 5) {
         const nextInput = e.target.nextElementSibling;
         if (nextInput) {
@@ -131,22 +92,18 @@ const PinVerificationModal = ({
         }
       }
 
-      // ===== TAMBAHAN: AUTO VERIFY PIN SAAT LENGKAP =====
       const currentPin = [...newPin].join('');
       if (currentPin.length === 6 && /^\d{6}$/.test(currentPin)) {
-        // Auto verify PIN saat user selesai input
         setTimeout(() => {
           verifyPinAndGetBalance(currentPin).catch(err => {
             setError(err.message);
           });
-        }, 500); // Delay 500ms untuk UX
+        }, 500);
       }
     }
   };
 
-  // Handle keydown untuk navigasi
   const handleKeyDown = (e, index) => {
-    // Backspace: hapus current dan focus ke previous
     if (e.key === 'Backspace' && !pin[index] && index > 0) {
       const prevInput = e.target.previousElementSibling;
       if (prevInput) {
@@ -155,20 +112,17 @@ const PinVerificationModal = ({
         newPin[index - 1] = '';
         setPin(newPin);
         
-        // Reset balance check saat PIN berubah
         setCardBalance(null);
         setBalanceChecked(false);
         setError(null);
       }
     }
     
-    // Enter: submit jika PIN sudah lengkap
     if (e.key === 'Enter') {
       handleSubmit();
     }
   };
 
-  // Handle paste - untuk copy-paste PIN
   const handlePaste = (e) => {
     e.preventDefault();
     const pastedData = e.clipboardData.getData('text');
@@ -179,7 +133,6 @@ const PinVerificationModal = ({
       setPin(newPin);
       setError(null);
       
-      // Auto verify jika PIN paste lengkap 6 digit
       if (numericOnly.length === 6) {
         setTimeout(() => {
           verifyPinAndGetBalance(numericOnly).catch(err => {
@@ -190,21 +143,11 @@ const PinVerificationModal = ({
     }
   };
 
-  // Submit PIN - SUDAH DIPERBAIKI
   const handleSubmit = async (overridePin = null) => {
-    if (isSubmitting) return; // Prevent double submit
+    if (isSubmitting) return;
     
     const finalPin = overridePin || pin.join('');
-    
-    console.log('PIN submission attempt:', {
-      finalPin: finalPin.replace(/./g, '*'), // Log masked PIN
-      length: finalPin.length,
-      cardId,
-      totalAmount,
-      hasBalance: !!cardBalance
-    });
 
-    // Validasi PIN
     if (finalPin.length !== 6) {
       setError("PIN harus 6 digit");
       return;
@@ -221,31 +164,34 @@ const PinVerificationModal = ({
     try {
       let verifiedCardData = cardInfo;
 
-      // Jika belum verify PIN atau belum ada balance, verify dulu
       if (!cardBalance || !balanceChecked) {
-        console.log('Verifying PIN before payment...');
         verifiedCardData = await verifyPinAndGetBalance(finalPin);
       }
 
-      // Cek apakah saldo cukup
       if (verifiedCardData.balance < totalAmount) {
         throw new Error(`Saldo tidak mencukupi. Saldo tersedia: ${formatCurrency(verifiedCardData.balance)}`);
       }
-
-      console.log('PIN verified, processing payment...');
       
-      // Panggil callback dari parent component dengan data lengkap
       await onSubmit(finalPin, verifiedCardData);
 
     } catch (err) {
-      console.error('PIN submission error:', err);
       setError(err.message || "Terjadi kesalahan saat memverifikasi PIN");
+      
+      // Auto-reset PIN saat error
+      setPin(['', '', '', '', '', '']);
+      setCardBalance(null);
+      setCardInfo(null);
+      setBalanceChecked(false);
+      
+      const firstInput = document.querySelector('.pin-input-0');
+      if (firstInput) {
+        setTimeout(() => firstInput.focus(), 100);
+      }
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // Clear PIN
   const clearPin = () => {
     setPin(['', '', '', '', '', '']);
     setError(null);
@@ -253,14 +199,12 @@ const PinVerificationModal = ({
     setCardInfo(null);
     setBalanceChecked(false);
     
-    // Focus ke input pertama
     const firstInput = document.querySelector('.pin-input-0');
     if (firstInput) {
       firstInput.focus();
     }
   };
 
-  // Format rupiah jika tidak di-provide
   const defaultFormatRupiah = (amount) => {
     return new Intl.NumberFormat('id-ID', {
       style: 'currency',
@@ -271,17 +215,9 @@ const PinVerificationModal = ({
 
   const formatCurrency = formatRupiah || defaultFormatRupiah;
 
-  // ===== TAMBAHAN: CEK BALANCE SAAT MODAL DIBUKA =====
-  useEffect(() => {
-    if (cardId) {
-      checkCardBalance();
-    }
-  }, [cardId]);
-
   return (
     <div className="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm flex items-center justify-center z-50">
       <div className="bg-white rounded-2xl p-8 shadow-2xl w-full max-w-md mx-4">
-        {/* Header */}
         <div className="flex justify-between items-center mb-6">
           <div className="flex items-center gap-3">
             <div className="bg-emerald-100 p-2 rounded-full">
@@ -302,14 +238,12 @@ const PinVerificationModal = ({
           Masukkan PIN 6 digit untuk melanjutkan pembayaran
         </p>
         
-        {/* Transaction Info - DIPERBAIKI DENGAN BALANCE INFO */}
         <div className="bg-slate-50 rounded-lg p-4 mb-6 border border-slate-200">
           <div className="flex justify-between items-center text-sm mb-2">
             <span className="font-medium text-slate-500">Card ID:</span>
             <span className="font-mono text-slate-700 font-semibold">{cardId}</span>
           </div>
           
-          {/* BALANCE INFO */}
           <div className="flex justify-between items-center text-sm mb-3">
             <span className="font-medium text-slate-500">Saldo Kartu:</span>
             {isVerifyingPin ? (
@@ -326,7 +260,6 @@ const PinVerificationModal = ({
             )}
           </div>
 
-          {/* BALANCE SUFFICIENCY INDICATOR */}
           {cardBalance !== null && (
             <div className="mb-3">
               {cardBalance >= totalAmount ? (
@@ -349,7 +282,6 @@ const PinVerificationModal = ({
           </div>
         </div>
         
-        {/* PIN Input Section */}
         <div className="mb-6">
           <div className="flex justify-between items-center mb-3">
             <label className="font-semibold text-slate-700">PIN (6 digit)</label>
@@ -374,7 +306,6 @@ const PinVerificationModal = ({
             </div>
           </div>
 
-          {/* PIN Input Grid */}
           <div className="grid grid-cols-6 gap-2 mb-4">
             {pin.map((digit, index) => (
               <input
@@ -399,37 +330,15 @@ const PinVerificationModal = ({
             ))}
           </div>
 
-          {/* PIN from Keypad indicator */}
-          {pinFromKeypad && (
-            <div className="text-center mb-4">
-              <div className="inline-flex items-center gap-2 bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-sm">
-                <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                PIN dari keypad hardware
-              </div>
-            </div>
-          )}
+          {pinFromKeypad && pinFromKeypad.length > 0 && (
+  <div className="text-center mb-4">
+    <div className="inline-flex items-center gap-2 bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-sm">
+      <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+      Input dari keypad hardware aktif
+    </div>
+  </div>
+)}
 
-          {/* PIN Verification Status */}
-          {isVerifyingPin && (
-            <div className="text-center mb-4">
-              <div className="inline-flex items-center gap-2 bg-yellow-50 text-yellow-700 px-3 py-1 rounded-full text-sm">
-                <Loader className="animate-spin" size={14} />
-                Memverifikasi PIN dan mengambil saldo...
-              </div>
-            </div>
-          )}
-
-          {/* Success indicator */}
-          {balanceChecked && cardBalance !== null && !error && (
-            <div className="text-center mb-4">
-              <div className="inline-flex items-center gap-2 bg-green-50 text-green-700 px-3 py-1 rounded-full text-sm">
-                <CheckCircle size={14} />
-                PIN valid, saldo berhasil dimuat
-              </div>
-            </div>
-          )}
-
-          {/* Error Message */}
           {error && (
             <div className="flex items-center gap-2 bg-red-50 text-red-700 p-3 rounded-lg text-sm">
               <AlertCircle size={16} />
@@ -438,7 +347,6 @@ const PinVerificationModal = ({
           )}
         </div>
         
-        {/* Action Buttons */}
         <div className="flex space-x-3">
           <button 
             onClick={onClose} 
@@ -461,18 +369,12 @@ const PinVerificationModal = ({
                 <Loader className="animate-spin" size={16} />
                 Memproses...
               </>
-            ) : isVerifyingPin ? (
-              <>
-                <Loader className="animate-spin" size={16} />
-                Memverifikasi...
-              </>
             ) : (
               'Konfirmasi Pembayaran'
             )}
           </button>
         </div>
 
-        {/* Help Text */}
         <div className="mt-4 text-center">
           <p className="text-xs text-slate-500">
             {pinFromKeypad ? 
@@ -480,11 +382,6 @@ const PinVerificationModal = ({
               'Gunakan keypad hardware atau ketik manual'
             }
           </p>
-          {balanceChecked && (
-            <p className="text-xs text-emerald-600 mt-1">
-              Saldo berhasil diverifikasi dari server
-            </p>
-          )}
         </div>
       </div>
     </div>

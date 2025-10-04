@@ -22,36 +22,18 @@ const POSPage = ({
   const [isWaitingForCard, setIsWaitingForCard] = useState(false);
   const [capturedCardData, setCapturedCardData] = useState(null);
 
-  // useEffect untuk deteksi kartu RFID - DIPERBAIKI
   useEffect(() => {
-    console.log("📡 RFID State Check:", {
-      isWaitingForCard,
-      hasUID: !!rfidData.uid,
-      uid: rfidData.uid,
-      timestamp: rfidData.timestamp,
-      cartLength: cart.length
-    });
-
-    // Kondisi untuk membuka modal:
-    // 1. Sedang menunggu kartu
-    // 2. Ada UID baru dengan timestamp
-    // 3. Keranjang tidak kosong
     if (isWaitingForCard && rfidData.uid && rfidData.timestamp && cart.length > 0) {
-      console.log("✅ Card detected! Opening PIN modal...");
-      
-      // Simpan data kartu yang terdeteksi
       setCapturedCardData({
         uid: rfidData.uid,
-        pin: rfidData.pin,
         timestamp: rfidData.timestamp
       });
       
       setIsWaitingForCard(false);
       setPinModalOpen(true);
     }
-  }, [rfidData.uid, rfidData.timestamp, isWaitingForCard, cart.length, rfidData.pin]);
+  }, [rfidData.uid, rfidData.timestamp, isWaitingForCard, cart.length]);
 
-  // Function dipanggil saat user KLIK tombol "Bayar dengan RFID"
   const handleInitiatePayment = () => {
     if (cart.length === 0) {
       alert('Keranjang masih kosong!');
@@ -63,26 +45,20 @@ const POSPage = ({
       return;
     }
 
-    console.log("🔵 Initiating payment, waiting for card...");
-    
-    // PENTING: Clear data RFID lama dulu
+    // PENTING: Clear RFID data lama sebelum mulai transaksi baru
     clearRfidData();
     
-    // Kemudian set waiting
     setIsWaitingForCard(true);
     alert('Silakan tempelkan kartu RFID pada reader...');
   };
 
-  // Function untuk cancel waiting
   const handleCancelWaiting = () => {
-    console.log("❌ Payment cancelled by user");
     setIsWaitingForCard(false);
     clearRfidData();
   };
 
-  // Function dipanggil dari modal saat PIN di-submit
   const handleProcessPayment = async (pinFromInput, verifiedCardData) => {
-    const finalPin = capturedCardData?.pin || pinFromInput;
+    const finalPin = rfidData.pin || pinFromInput;
     
     if (!finalPin) {
       alert("PIN harus diisi!");
@@ -97,12 +73,6 @@ const POSPage = ({
     }
 
     try {
-      console.log('💳 Processing payment:', {
-        cardId: capturedCardData.uid,
-        amount: totalAmount,
-        items: cart.length
-      });
-
       const response = await api.post('/rfid/payment', {
         cardId: capturedCardData.uid,
         pin: finalPin,
@@ -116,14 +86,13 @@ const POSPage = ({
       });
 
       if (response.data.success) {
-        console.log("✅ Payment successful!");
         alert(`Pembayaran Berhasil!\n\nSaldo Lama: ${formatRupiah(response.data.data.oldBalance)}\nSaldo Baru: ${formatRupiah(response.data.data.newBalance)}`);
         onPaymentComplete();
       }
     } catch (error) {
-      console.error('❌ Payment error:', error.response?.data);
       alert(error.response?.data?.message || 'Transaksi Gagal!');
     } finally {
+      // Cleanup - always execute whether success or error
       setPinModalOpen(false);
       setCapturedCardData(null);
       clearRfidData();
@@ -131,7 +100,6 @@ const POSPage = ({
   };
 
   const handleCloseModal = () => {
-    console.log("🚪 Closing PIN modal");
     setPinModalOpen(false);
     setCapturedCardData(null);
     clearRfidData();
@@ -139,7 +107,6 @@ const POSPage = ({
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-      {/* Kolom Kiri: Daftar Produk */}
       <div className="lg:col-span-2">
         <ProductGrid
           products={products}
@@ -149,7 +116,6 @@ const POSPage = ({
         />
       </div>
 
-      {/* Kolom Kanan: Keranjang & Pembayaran */}
       <div className="space-y-8">
         <ShoppingCart
           cart={cart}
@@ -168,12 +134,11 @@ const POSPage = ({
         />
       </div>
 
-      {/* Modal PIN - GUNAKAN KEY UNTUK FORCE RE-RENDER */}
       {isPinModalOpen && capturedCardData && (
         <PinVerificationModal
-          key={capturedCardData.timestamp} // PENTING: Force new instance
+          key={capturedCardData.timestamp}
           cardId={capturedCardData.uid}
-          pinFromKeypad={capturedCardData.pin}
+          pinFromKeypad={rfidData.pin}
           totalAmount={cart.reduce((sum, item) => sum + item.price * item.quantity, 0)}
           onClose={handleCloseModal}
           onSubmit={handleProcessPayment}

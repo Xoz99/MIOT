@@ -28,13 +28,16 @@ const Dashboard = ({ storeInfo, setStoreInfo, onLogout, user, api }) => {
   const [cart, setCart] = useState([]);
   const fetchingRef = useRef(false);
   const mountedRef = useRef(true);
+  const serialBufferRef = useRef('');
 
   const processArduinoData = useCallback((data) => {
     const trimmedData = data.trim();
+    if (!trimmedData) return;
+    
     console.log("Data Diterima dari Arduino:", trimmedData);
 
     if (trimmedData.startsWith("UID:")) {
-      const uid = trimmedData.split(":")[1];
+      const uid = trimmedData.split(":")[1].trim();
       console.log("New UID detected:", uid);
       
       setRfidData({ 
@@ -43,14 +46,64 @@ const Dashboard = ({ storeInfo, setStoreInfo, onLogout, user, api }) => {
         timestamp: Date.now(),
         scanCount: Math.random()
       });
-    } else if (trimmedData.startsWith("PIN:")) {
-      const pin = trimmedData.split(":")[1];
+    } 
+    else if (trimmedData.startsWith("INPUT_BUFFER:")) {
+      const buffer = trimmedData.split(":")[1].trim();
+      console.log("Keypad buffer update:", buffer);
+      
+      setRfidData(prev => ({ 
+        ...prev, 
+        pin: buffer,
+        scanCount: Math.random()
+      }));
+    }
+    else if (trimmedData.startsWith("INPUT_CONFIRMED:")) {
+      const confirmedPin = trimmedData.split(":")[1].trim();
+      console.log("PIN confirmed from keypad:", confirmedPin);
+      
+      setRfidData(prev => ({ 
+        ...prev, 
+        pin: confirmedPin,
+        scanCount: Math.random()
+      }));
+    }
+    else if (trimmedData.startsWith("BACKSPACE - Current:")) {
+      const buffer = trimmedData.split(":")[1].trim();
+      console.log("Keypad backspace, new buffer:", buffer);
+      
+      setRfidData(prev => ({ 
+        ...prev, 
+        pin: buffer || null,
+        scanCount: Math.random()
+      }));
+    }
+    else if (trimmedData.startsWith("KEY_PRESSED:")) {
+      const key = trimmedData.split(":")[1].trim();
+      console.log("Key pressed:", key);
+    }
+    else if (trimmedData.startsWith("PIN:")) {
+      const pin = trimmedData.split(":")[1].trim();
       console.log("PIN received:", pin);
       setRfidData(prev => ({ 
         ...prev, 
-        pin: pin 
+        pin: pin,
+        scanCount: Math.random()
       }));
-    } else {
+    }
+    else if (trimmedData.includes("RFID System") || 
+             trimmedData.includes("Keypad System") ||
+             trimmedData.includes("SYSTEM READY") ||
+             trimmedData.includes("===") ||
+             trimmedData.includes("Keypad Usage:") ||
+             trimmedData.includes("Confirm input") ||
+             trimmedData.includes("Backspace") ||
+             trimmedData.includes("All other keys") ||
+             trimmedData.includes("CARD_COUNT:") ||
+             trimmedData.includes("DUPLICATE_CARD") ||
+             trimmedData.includes("NO_INPUT_TO_CONFIRM")) {
+      return;
+    }
+    else {
       console.log("Data tidak dikenal diabaikan:", trimmedData);
     }
   }, []);
@@ -60,6 +113,7 @@ const Dashboard = ({ storeInfo, setStoreInfo, onLogout, user, api }) => {
     try {
       await serialPort.close();
       setSerialPort(null);
+      serialBufferRef.current = '';
     } catch(err) {
       console.error("Gagal menutup port:", err);
     }
@@ -68,6 +122,7 @@ const Dashboard = ({ storeInfo, setStoreInfo, onLogout, user, api }) => {
   useEffect(() => {
     if (!serialPort) {
       setRfidConnected(false);
+      serialBufferRef.current = '';
       return;
     }
 
@@ -84,9 +139,15 @@ const Dashboard = ({ storeInfo, setStoreInfo, onLogout, user, api }) => {
           const { value, done } = await reader.read();
           if (done) break;
           
-          const lines = value.split('\n');
+          serialBufferRef.current += value;
+          
+          const lines = serialBufferRef.current.split('\n');
+          serialBufferRef.current = lines.pop() || '';
+          
           lines.forEach(line => {
-            if (line.trim()) processArduinoData(line);
+            if (line.trim()) {
+              processArduinoData(line);
+            }
           });
         }
       } catch (error) {
@@ -104,6 +165,7 @@ const Dashboard = ({ storeInfo, setStoreInfo, onLogout, user, api }) => {
         reader.cancel().catch(() => {});
       }
       setRfidConnected(false);
+      serialBufferRef.current = '';
     };
   }, [serialPort, processArduinoData]); 
 
